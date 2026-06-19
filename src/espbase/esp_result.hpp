@@ -22,6 +22,8 @@ class [[nodiscard]] EspResultBase {
   }
 };
 
+class EspError;
+
 template <typename T = void>
 class [[nodiscard]] EspResult : public EspResultBase {
  private:
@@ -33,8 +35,9 @@ class [[nodiscard]] EspResult : public EspResultBase {
   static EspResult fail(esp_err_t e) { return EspResult(e, error_tag_t{}); }
   static EspResult ok(T val) { return EspResult(std::move(val), ok_tag_t{}); }
 
-  EspResult(esp_err_t e, error_tag_t error_tag = error_tag_t{}) : EspResultBase(e) {}
+  constexpr EspResult(esp_err_t e, error_tag_t error_tag = error_tag_t{}) : EspResultBase(e) {}
   EspResult(T val, ok_tag_t ok_tag = ok_tag_t{}) : EspResultBase(ESP_OK), value_(std::move(val)) {}
+  constexpr EspResult(EspError e);
 
   T& operator*() { return *value_; }
   T* operator->() { return &(*value_); }
@@ -46,6 +49,7 @@ template <>
 class EspResult<void> : public EspResultBase {
  public:
   constexpr EspResult(esp_err_t e = ESP_OK) : EspResultBase(e) {}
+  constexpr EspResult(EspError e);
 };
 
 class [[nodiscard]] EspError {
@@ -77,3 +81,9 @@ class [[nodiscard]] EspError {
     return EspError(res.error());
   }
 };
+
+template <typename T>
+constexpr EspResult<T>::EspResult(EspError e) : EspResultBase(e) {
+}
+constexpr EspResult<void>::EspResult(EspError e) : EspResultBase(e) {
+}
