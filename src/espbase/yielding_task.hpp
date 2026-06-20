@@ -18,12 +18,16 @@ class YieldingTask : public EspTaskBase {
 
   constexpr YieldingTask() = default;
 
-  EspResult<void> start(const char* name, uint32_t stack_size, UBaseType_t priority, TaskData* data,
-                        StepFunction step_func, StopFunction stop_func = nullptr) {
+  EspResult<void> start(const TaskConfig& config, TaskData* data, StepFunction step_func,
+                        StopFunction stop_func = nullptr) {
     data_ = data;
     step_func_ = step_func;
     stop_func_ = stop_func;
-    return start_internal(name, stack_size, priority, trampoline, this);
+    return start_internal(config, trampoline, this);
+  }
+
+  EspResult<void> start(TaskData* data, StepFunction step_func, StopFunction stop_func = nullptr) {
+    return start(TaskConfig{}, data, step_func, stop_func);
   }
 
   TaskData* data() const { return data_; }

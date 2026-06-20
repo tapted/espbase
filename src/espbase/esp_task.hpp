@@ -11,6 +11,13 @@
 
 #include "espbase/esp_result.hpp"
 
+struct TaskConfig {
+  const char* name = "task";
+  uint32_t stack_size = 2048;
+  UBaseType_t priority = 5;
+  BaseType_t core_id = tskNO_AFFINITY;
+};
+
 // Abstraction over FreeRTOS tasks that provides RAII semantics and safe shutdown capabilities.
 class EspTaskBase {
  public:
@@ -38,8 +45,7 @@ class EspTaskBase {
   volatile bool stop_requested_ = false;
 
   // Internal orchestrator for FreeRTOS task creation
-  EspResult<void> start_internal(const char* name, uint32_t stack_size, UBaseType_t priority,
-                                 TaskFunction_t task_code, void* arg);
+  EspResult<void> start_internal(const TaskConfig& config, TaskFunction_t task_code, void* arg);
 };
 
 template <typename TaskData>
@@ -49,11 +55,14 @@ class EspTask : public EspTaskBase {
 
   constexpr EspTask() = default;
 
-  EspResult<void> start(const char* name, uint32_t stack_size, UBaseType_t priority, TaskData* data,
-                        TaskFunction func) {
+  EspResult<void> start(const TaskConfig& config, TaskData* data, TaskFunction func) {
     data_ = data;
     func_ = func;
-    return start_internal(name, stack_size, priority, trampoline, this);
+    return start_internal(config, trampoline, this);
+  }
+
+  EspResult<void> start(TaskData* data, TaskFunction func) {
+    return start(TaskConfig{}, data, func);
   }
 
   TaskData* data() const { return data_; }
