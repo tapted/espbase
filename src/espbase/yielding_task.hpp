@@ -39,33 +39,41 @@ class YieldingTask : public EspTaskBase {
 
   static void trampoline(void* arg) {
     auto* instance = static_cast<YieldingTask<TaskData>*>(arg);
+    bool is_active = false;
 
     while (true) {
-      // 1. Intercept explicit stop requests immediately upon waking
+      // 1. Wakeup: Transition from Idle to Active
+      if (!is_active) {
+        instance->acquire_pm_lock();
+        is_active = true;
+      }
+
+      // 2. Intercept explicit stop requests
       if (instance->is_stop_requested()) {
-        if (instance->stop_func_) {
-          instance->stop_func_(*instance);
-        }
+        if (instance->stop_func_) instance->stop_func_(*instance);
+
+        instance->release_pm_lock();
+        is_active = false;
+
         // Sleep indefinitely until notify(true) is called to clear the stop flag
         instance->wait_for_notification(portMAX_DELAY);
         continue;
       }
 
-      // 2. Normal step execution (Happy Path only)
+      // 3. Normal step execution
       std::optional<uint32_t> delay_ms = std::nullopt;
-      if (instance->step_func_) {
-        delay_ms = instance->step_func_(*instance);
-      }
+      if (instance->step_func_) delay_ms = instance->step_func_(*instance);
 
-      // 3. State Machine Yielding & Natural Completion
+      // 4. Yielding
       if (delay_ms.has_value()) {
+        // Remain Active: Keep lock acquired and CPU awake during this sequence delay
         instance->wait_for_notification(pdMS_TO_TICKS(*delay_ms));
       } else {
-        // Sequence naturally returned nullopt.
-        // Automatically fire the transition-to-idle callback.
-        if (instance->stop_func_) {
-          instance->stop_func_(*instance);
-        }
+        // Natural Completion: Transition to Idle
+        if (instance->stop_func_) instance->stop_func_(*instance);
+
+        instance->release_pm_lock();
+        is_active = false;
         instance->wait_for_notification(portMAX_DELAY);
       }
     }

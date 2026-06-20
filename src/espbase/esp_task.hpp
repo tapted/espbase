@@ -11,11 +11,19 @@
 
 #include "espbase/esp_result.hpp"
 
+struct esp_pm_lock;
+typedef struct esp_pm_lock* esp_pm_lock_handle_t;
+
 struct TaskConfig {
   const char* name = "task";
   uint32_t stack_size = 2048;
   UBaseType_t priority = 5;
   BaseType_t core_id = tskNO_AFFINITY;
+
+  // Automatically manages an ESP_PM_NO_LIGHT_SLEEP lock. Currently this is only implemented for
+  // YieldingTask. It causes light-sleep to be disabled so long as the task step indicates it is
+  // active (by returning a non-nullopt value) or until the task is explicitly stopped.
+  bool prevent_light_sleep = false;
 };
 
 // Abstraction over FreeRTOS tasks that provides RAII semantics and safe shutdown capabilities.
@@ -43,6 +51,13 @@ class EspTaskBase {
   TaskHandle_t task_handle_ = nullptr;
   SemaphoreHandle_t sync_sem_ = nullptr;
   volatile bool stop_requested_ = false;
+
+  // --- PM Lock Management ---
+  esp_pm_lock_handle_t pm_lock_ = nullptr;
+  bool pm_lock_acquired_ = false;
+
+  void acquire_pm_lock();
+  void release_pm_lock();
 
   // Internal orchestrator for FreeRTOS task creation
   EspResult<void> start_internal(const TaskConfig& config, TaskFunction_t task_code, void* arg);
