@@ -42,8 +42,9 @@ void check_crash_loop(void (*on_threshold_reached)()) {
   if (crash_loop_rtc_state.consecutive_crashes >= 5) {
     ESP_LOGE(TAG, "TERMINAL CRASH LOOP. Halting system to protect flash.");
 
-    // Optional: Turn on a red LED here if you have one, so you know it's dead
-    if (on_threshold_reached) {
+    // Optional: Turn on a red LED here if you have one, so you know it's dead.
+    // Only check == 5 in case on_threshold_reached *also* causes a reset.
+    if (on_threshold_reached && crash_loop_rtc_state.consecutive_crashes == 5) {
       on_threshold_reached();
     }
 
