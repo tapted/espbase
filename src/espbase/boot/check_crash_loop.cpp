@@ -1,4 +1,4 @@
-#include "espbase/check_crash_loop.hpp"
+#include "espbase/boot/check_crash_loop.hpp"
 
 #include <esp_log.h>
 #include <esp_sleep.h>
