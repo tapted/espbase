@@ -1,9 +1,8 @@
 #pragma once
 
+#include <esp_err.h>
+#include <esp_log.h>
 #include <optional>
-
-#include "esp_err.h"
-#include "esp_log.h"
 
 class [[nodiscard]] EspResultBase {
  protected:

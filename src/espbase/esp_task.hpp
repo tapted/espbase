@@ -24,6 +24,10 @@ struct TaskConfig {
   // YieldingTask. It causes light-sleep to be disabled so long as the task step indicates it is
   // active (by returning a non-nullopt value) or until the task is explicitly stopped.
   bool prevent_light_sleep = false;
+
+  // Automatically manages an ESP_PM_APB_FREQ_MAX lock. This prevents the APB frequency from
+  // scaling down under load, which can cause issues for timing-sensitive applications.
+  bool lock_apb_freq = false;
 };
 
 // Abstraction over FreeRTOS tasks that provides RAII semantics and safe shutdown capabilities.
@@ -50,17 +54,23 @@ class EspTaskBase {
  protected:
   TaskHandle_t task_handle_ = nullptr;
   SemaphoreHandle_t sync_sem_ = nullptr;
+  SemaphoreHandle_t join_sem_ = nullptr;
   volatile bool stop_requested_ = false;
+  volatile bool terminate_requested_ = false;
 
   // --- PM Lock Management ---
-  esp_pm_lock_handle_t pm_lock_ = nullptr;
-  bool pm_lock_acquired_ = false;
+  esp_pm_lock_handle_t pm_sleep_lock_ = nullptr;
+  esp_pm_lock_handle_t pm_apb_lock_ = nullptr;
+  bool locks_acquired_ = false;
 
-  void acquire_pm_lock();
-  void release_pm_lock();
+  void acquire_pm_locks();
+  void release_pm_locks();
 
-  // Internal orchestrator for FreeRTOS task creation
+  // Internal orchestrator for FreeRTOS task creation.
   EspResult<void> start_internal(const TaskConfig& config, TaskFunction_t task_code, void* arg);
+
+  // Called by the thread's trampoline just before exiting.
+  [[noreturn]] void terminate_from_task();
 };
 
 template <typename TaskData>
@@ -88,14 +98,9 @@ class EspTask : public EspTaskBase {
 
   static void trampoline(void* arg) {
     auto* instance = static_cast<EspTask<TaskData>*>(arg);
-
     if (instance->func_) {
       instance->func_(*instance);
     }
-
-    // Safely clear the handle before natural thread exit to prevent ~TaskBase
-    // from attempting a double-delete on a dead thread.
-    instance->task_handle_ = nullptr;
-    vTaskDelete(nullptr);
+    instance->terminate_from_task();
   }
 };

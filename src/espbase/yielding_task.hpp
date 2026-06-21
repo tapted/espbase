@@ -41,21 +41,22 @@ class YieldingTask : public EspTaskBase {
     auto* instance = static_cast<YieldingTask<TaskData>*>(arg);
     bool is_active = false;
 
-    while (true) {
+    // The thread runs until the object's destructor flags termination
+    while (!instance->terminate_requested_) {
       // 1. Wakeup: Transition from Idle to Active
       if (!is_active) {
-        instance->acquire_pm_lock();
+        instance->acquire_pm_locks();
         is_active = true;
       }
 
-      // 2. Intercept explicit stop requests
+      // 2. Intercept explicit stop requests (Sequence Aborts)
       if (instance->is_stop_requested()) {
         if (instance->stop_func_) instance->stop_func_(*instance);
 
-        instance->release_pm_lock();
+        instance->release_pm_locks();
         is_active = false;
 
-        // Sleep indefinitely until notify(true) is called to clear the stop flag
+        // Wait for next sequence OR a termination request from reset()
         instance->wait_for_notification(portMAX_DELAY);
         continue;
       }
@@ -72,10 +73,23 @@ class YieldingTask : public EspTaskBase {
         // Natural Completion: Transition to Idle
         if (instance->stop_func_) instance->stop_func_(*instance);
 
-        instance->release_pm_lock();
+        instance->release_pm_locks();
         is_active = false;
         instance->wait_for_notification(portMAX_DELAY);
       }
     }
+
+    // --- THREAD EXIT PATH ---
+    // The loop has broken because terminate_requested_ is true.
+
+    // Safety Net: If the thread was actively playing a note when destroyed,
+    // gracefully silence the hardware and release the PM locks.
+    if (is_active) {
+      if (instance->stop_func_) instance->stop_func_(*instance);
+      instance->release_pm_locks();
+    }
+
+    // Gives the join semaphore to unblock the destructor, then safely deletes itself.
+    instance->terminate_from_task();
   }
 };
