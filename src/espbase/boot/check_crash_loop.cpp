@@ -5,7 +5,9 @@
 #include <esp_system.h>
 #include <nvs_flash.h>
 
+namespace {
 static constexpr char TAG[] = "CrashLoopCheck";
+}
 
 RTC_NOINIT_ATTR struct RtcState {
   uint32_t magic_word;
