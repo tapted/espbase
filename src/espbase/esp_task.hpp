@@ -48,6 +48,7 @@ class EspTaskBase {
   // Notifies the task to wake up and optionally clears the stop request flag.
   void notify(bool clear_stop = false);
   void request_stop();
+  bool running() const { return task_handle_ != nullptr; }
   bool is_stop_requested() const volatile { return stop_requested_; }
   bool wait_for_notification(TickType_t ticks = portMAX_DELAY);
 
