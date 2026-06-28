@@ -72,6 +72,22 @@ EspResult<void> NvsStore::get_string(Key key, char* buffer, size_t max_len) cons
   return nvs_get_str(handle_, key, buffer, &len);
 }
 
+EspResult<void> NvsStore::set_raw_blob(Key key, const void* data, size_t len) {
+  if (!handle_) return ESP_ERR_INVALID_STATE;
+  return nvs_set_blob(handle_, key, data, len);
+}
+
+EspResult<void> NvsStore::get_raw_blob(Key key, void* data, size_t len) const {
+  if (!handle_) return ESP_ERR_INVALID_STATE;
+
+  size_t required_size = 0;
+  esp_err_t err = nvs_get_blob(handle_, key, nullptr, &required_size);
+  if (err != ESP_OK) return err;
+  if (required_size != len) return ESP_ERR_INVALID_SIZE;
+
+  return nvs_get_blob(handle_, key, data, &required_size);
+}
+
 EspResult<void> NvsStore::commit() {
   if (!handle_) return ESP_ERR_INVALID_STATE;
   return nvs_commit(handle_);

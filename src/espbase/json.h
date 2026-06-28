@@ -1,9 +1,9 @@
 #pragma once
 
+#include <cstring>
 #include <iterator>
 #include <optional>
 #include <string>
-#include <cstring>
 #include <string_view>
 #include <type_traits>
 
@@ -53,8 +53,57 @@ class JsonNodeView {
     return JsonNodeView(cJSON_GetObjectItem(node_, key));
   }
 
-  // --- Safe Value Extractors ---
+  // String Overload
+  bool change(std::string& value, const char* key) const {
+    if (auto state = (*this)[key].as_string()) {
+      if (*state != value) {
+        value = *state;
+        return true;
+      }
+    }
+    return false;
+  }
 
+  // Direct Bool Overload (For standard JSON true/false)
+  bool change(bool& value, const char* key) const {
+    if (auto state = (*this)[key].as_bool()) {
+      if (*state != value) {
+        value = *state;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Generic Numeric Overload (uint8_t, int, float, double, size_t)
+  template <typename T>
+    requires(std::integral<T> || std::floating_point<T>) && (!std::same_as<T, bool>)
+  bool change(T& value, const char* key) const {
+    // Relying on as_double() protects against cJSON's 32-bit signed valueint overflow
+    if (auto state = (*this)[key].as_double()) {
+      T new_value = static_cast<T>(*state);
+      if (new_value != value) {
+        value = new_value;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Generic Mapper Overload (String -> Anything)
+  template <typename T, std::invocable<std::string_view> Mapper>
+  bool change(T& value, const char* key, Mapper mapper) const {
+    if (auto state = (*this)[key].as_string()) {
+      T new_value = mapper(*state);
+      if (new_value != value) {
+        value = new_value;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // --- Safe Value Extractors ---
   std::optional<std::string_view> as_string() const {
     if (node_ && cJSON_IsString(node_) && node_->valuestring) {
       return std::string_view(node_->valuestring);  // Zero-copy view of cJSON's internal buffer
