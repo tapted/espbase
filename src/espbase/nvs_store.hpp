@@ -75,6 +75,41 @@ class NvsStore {
   // Reads directly into a user-provided stack buffer
   EspResult<void> get_string(Key key, char* buffer, size_t max_len) const;
 
+  template <typename T>
+  EspResult<void> set_blob(Key key, const T& value) {
+    static_assert(std::is_trivially_copyable_v<T>,
+                  "NVS Blobs must be trivially copyable POD types.");
+
+    if (!handle_) return ESP_ERR_INVALID_STATE;
+    return nvs_set_blob(handle_, key, &value, sizeof(T));
+  }
+
+  template <typename T>
+  EspResult<T> get_blob(Key key) const {
+    static_assert(std::is_trivially_copyable_v<T>,
+                  "NVS Blobs must be trivially copyable POD types.");
+
+    if (!handle_) return EspResult<T>::fail(ESP_ERR_INVALID_STATE);
+
+    size_t required_size = 0;
+
+    // 1. Get the required size
+    esp_err_t err = nvs_get_blob(handle_, key, nullptr, &required_size);
+    if (err != ESP_OK) return EspResult<T>::fail(err);
+
+    // 2. Validate size matches our struct to prevent memory corruption across firmware updates
+    if (required_size != sizeof(T)) {
+      return EspResult<T>::fail(ESP_ERR_INVALID_SIZE);
+    }
+
+    // 3. Load the data
+    T value{};  // Zero-initialize safety
+    err = nvs_get_blob(handle_, key, &value, &required_size);
+    if (err != ESP_OK) return EspResult<T>::fail(err);
+
+    return EspResult<T>::ok(value);
+  }
+
   EspResult<void> commit();
 
   // --- Schema Migration ---
