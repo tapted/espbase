@@ -52,6 +52,8 @@ class EspTaskBase {
   bool is_stop_requested() const volatile { return stop_requested_; }
   bool wait_for_notification(TickType_t ticks = portMAX_DELAY);
 
+  void log_high_watermark();
+
  protected:
   TaskHandle_t task_handle_ = nullptr;
   SemaphoreHandle_t sync_sem_ = nullptr;

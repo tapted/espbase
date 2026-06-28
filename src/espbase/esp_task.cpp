@@ -52,6 +52,14 @@ bool EspTaskBase::wait_for_notification(TickType_t ticks) {
   return xSemaphoreTake(sync_sem_, ticks) == pdTRUE;
 }
 
+void EspTaskBase::log_high_watermark() {
+  if (task_handle_) {
+    UBaseType_t high_watermark = uxTaskGetStackHighWaterMark(task_handle_);
+    ESP_LOGI("EspTask", "Task '%s' high watermark: %u bytes", pcTaskGetName(task_handle_),
+             high_watermark * sizeof(StackType_t));
+  }
+}
+
 void EspTaskBase::acquire_pm_locks() {
   if (!locks_acquired_) {
     if (pm_sleep_lock_) esp_pm_lock_acquire(pm_sleep_lock_);
