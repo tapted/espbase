@@ -16,7 +16,7 @@ enum class PmState {
   PM_OVERRIDDEN  // Button pressed
 };
 
-static volatile PmState s_state = PmState::BOOT_WINDOW;
+static DRAM_ATTR volatile PmState s_state = PmState::BOOT_WINDOW;
 static esp_timer_handle_t s_timer_handle = nullptr;
 
 static void apply_pm_override(void* /*arg1*/, uint32_t /*arg2*/) {
