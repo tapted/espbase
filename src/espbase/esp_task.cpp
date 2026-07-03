@@ -12,10 +12,10 @@ void EspTaskBase::reset() {
       // Wait up to 2000ms. If it times out, the thread is deadlocked.
       if (xSemaphoreTake(join_sem_, pdMS_TO_TICKS(2000)) != pdTRUE) {
         // Fallback: The thread refuses to die. Forcefully terminate.
-        vTaskDelete(task_handle_);
+        vTaskDelete(task_handle_.load(std::memory_order_acquire));
       }
     }
-    task_handle_ = nullptr;
+    task_handle_.store(nullptr, std::memory_order_release);
   }
 
   if (sync_sem_) {
@@ -78,8 +78,27 @@ void EspTaskBase::release_pm_locks() {
 
 EspResult<void> EspTaskBase::start_internal(const TaskConfig& config, TaskFunction_t task_code,
                                             void* arg) {
-  if (task_handle_ != nullptr) return ESP_ERR_INVALID_STATE;
+  TaskHandle_t expected = nullptr;
+  TaskHandle_t starting_flag = reinterpret_cast<TaskHandle_t>(1);  // Atomic flag.
 
+  // Attempt to atomically claim the right to start the task
+  if (!task_handle_.compare_exchange_strong(expected, starting_flag, std::memory_order_acquire)) {
+    // We failed to claim it. The task is either currently starting, or already running.
+
+    if (config.notify_if_started) {
+      // SPINLOCK: We MUST wait for the winning thread to finish xTaskCreate.
+      // If we pass '0x1' to FreeRTOS xTaskNotify, it will instantly hardware panic.
+      while (task_handle_.load(std::memory_order_acquire) == starting_flag) {
+        taskYIELD();
+      }
+
+      notify(true);
+    }
+    return ESP_ERR_INVALID_STATE;  // Return early, the task is active
+  }
+
+  // 2. We won the race! We own the initialization.
+  TaskHandle_t new_handle = nullptr;
   stop_requested_ = false;
   terminate_requested_ = false;
 
@@ -93,19 +112,22 @@ EspResult<void> EspTaskBase::start_internal(const TaskConfig& config, TaskFuncti
 
   sync_sem_ = xSemaphoreCreateBinary();
   join_sem_ = xSemaphoreCreateBinary();
-  
+
   if (!sync_sem_ || !join_sem_) {
+    task_handle_.store(nullptr, std::memory_order_release);
     reset();  // Safely cleans up partial allocations
     return ESP_ERR_NO_MEM;
   }
 
   BaseType_t res = xTaskCreatePinnedToCore(task_code, config.name, config.stack_size, arg,
-                                           config.priority, &task_handle_, config.core_id);
+                                           config.priority, &new_handle, config.core_id);
   if (res != pdPASS) {
+    task_handle_.store(nullptr, std::memory_order_release);
     reset();
     return ESP_ERR_NO_MEM;
   }
 
+  task_handle_.store(new_handle, std::memory_order_release);
   return ESP_OK;
 }
 

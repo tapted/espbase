@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
@@ -28,6 +29,10 @@ struct TaskConfig {
   // Automatically manages an ESP_PM_APB_FREQ_MAX lock. This prevents the APB frequency from
   // scaling down under load, which can cause issues for timing-sensitive applications.
   bool lock_apb_freq = false;
+
+  // If true, instead of starting a new task, start will safely check for an existing task and
+  // notify it instead.
+  bool notify_if_started = true;
 };
 
 // Abstraction over FreeRTOS tasks that provides RAII semantics and safe shutdown capabilities.
@@ -48,14 +53,14 @@ class EspTaskBase {
   // Notifies the task to wake up and optionally clears the stop request flag.
   void notify(bool clear_stop = false);
   void request_stop();
-  bool running() const { return task_handle_ != nullptr; }
+  bool running() const { return task_handle_.load(std::memory_order_relaxed) != nullptr; }
   bool is_stop_requested() const volatile { return stop_requested_; }
   bool wait_for_notification(TickType_t ticks = portMAX_DELAY);
 
   void log_high_watermark();
 
  protected:
-  TaskHandle_t task_handle_ = nullptr;
+  std::atomic<TaskHandle_t> task_handle_ = nullptr;
   SemaphoreHandle_t sync_sem_ = nullptr;
   SemaphoreHandle_t join_sem_ = nullptr;
   volatile bool stop_requested_ = false;
