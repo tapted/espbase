@@ -53,7 +53,7 @@ class JsonNodeView {
     return JsonNodeView(cJSON_GetObjectItem(node_, key));
   }
 
-  // String Overload
+  // Assigns `key`'s value to `value` if it exists. Returns true if the value changed.
   bool change(std::string& value, const char* key) const {
     if (auto state = (*this)[key].as_string()) {
       if (*state != value) {
