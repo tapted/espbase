@@ -93,6 +93,7 @@ EspResult<void> EspTaskBase::start_internal(const TaskConfig& config, TaskFuncti
       }
 
       notify(true);
+      return ESP_OK;
     }
     return ESP_ERR_INVALID_STATE;  // Return early, the task is active
   }
