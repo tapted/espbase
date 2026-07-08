@@ -109,6 +109,6 @@ class EspTask : public EspTaskBase {
     if (instance->func_) {
       instance->func_(*instance);
     }
-    instance->terminate_from_task();
+    instance->terminate_from_task();  // Never returns.
   }
 };

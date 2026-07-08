@@ -104,15 +104,22 @@ EspResult<void> EspTaskBase::start_internal(const TaskConfig& config, TaskFuncti
   terminate_requested_ = false;
 
   // Initialize PM Locks
-  if (config.prevent_light_sleep) {
+  if (pm_sleep_lock_ == nullptr && config.prevent_light_sleep) {
     esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, config.name, &pm_sleep_lock_);
   }
-  if (config.lock_apb_freq) {
+  if (pm_apb_lock_ == nullptr && config.lock_apb_freq) {
     esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, config.name, &pm_apb_lock_);
   }
-
-  sync_sem_ = xSemaphoreCreateBinary();
-  join_sem_ = xSemaphoreCreateBinary();
+  if (sync_sem_ == nullptr) {
+    sync_sem_ = xSemaphoreCreateBinary();
+  } else {
+    xQueueReset(sync_sem_);  // Clear any stale notifications from previous runs.
+  }
+  if (join_sem_ == nullptr) {
+    join_sem_ = xSemaphoreCreateBinary();
+  } else {
+    xQueueReset(join_sem_);  // Clear any stale notifications from previous runs.
+  }
 
   if (!sync_sem_ || !join_sem_) {
     task_handle_.store(nullptr, std::memory_order_release);
@@ -133,10 +140,12 @@ EspResult<void> EspTaskBase::start_internal(const TaskConfig& config, TaskFuncti
 }
 
 void EspTaskBase::terminate_from_task() {
-  // Copy the semaphore handle to the thread's stack.
-  SemaphoreHandle_t j_sem = join_sem_;
+  // Should be a no-op - task shouldn't be holding locks if it wants to terminate itself:
+  release_pm_locks();
 
+  SemaphoreHandle_t j_sem = join_sem_;  // Copy the semaphore handle to the thread's stack.
   if (j_sem) xSemaphoreGive(j_sem);
+  task_handle_.store(nullptr, std::memory_order_release);  //  Allow re-use.
   vTaskDelete(nullptr);  // Safe thread termination. Does not return.
   for (;;);  // Never reached, but needed to avoid "noreturn function does return" warnings.
 }
