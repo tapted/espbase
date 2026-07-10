@@ -106,9 +106,9 @@ class EspTask : public EspTaskBase {
 
   static void trampoline(void* arg) {
     auto* instance = static_cast<EspTask<TaskData>*>(arg);
-    if (instance->func_) {
-      instance->func_(*instance);
-    }
+    instance->acquire_pm_locks();
+    instance->func_(*instance);
+    instance->release_pm_locks();
     instance->terminate_from_task();  // Never returns.
   }
 };
