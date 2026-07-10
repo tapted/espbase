@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HAPPY Logs</title>
     <style>
-        body { background: #121212; color: #d4d4d4; font-family: monospace; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
+        body { background: #121212; color: #d4d4d4; font-family: monospace; margin: 0; display: flex; flex-direction: column; height: 100vh; }
         #header { background: #1e1e1e; padding: 10px 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;}
         #status { font-weight: bold; padding: 4px 8px; border-radius: 4px; }
         .status-connected { background: #1b5e20; color: #a5d6a7; }
@@ -20,7 +20,7 @@
 </head>
 <body>
     <div id="header">
-        <span>ESP32 Diagnostics Console</span>
+        <span>ESP32 Network Console</span>
         <span id="status" class="status-disconnected">Connecting...</span>
     </div>
     <div id="logs"></div>
@@ -30,7 +30,6 @@
         const statusDiv = document.getElementById('status');
         let autoScroll = true;
 
-        // Detect manual scrolling to pause autoscroll
         logsDiv.addEventListener('scroll', () => {
             autoScroll = (logsDiv.scrollTop + logsDiv.clientHeight >= logsDiv.scrollHeight - 10);
         });
@@ -40,37 +39,57 @@
             statusDiv.className = className;
         }
 
-        const source = new EventSource('/stream');
+        async function connectStream() {
+            try {
+                const response = await fetch('/stream');
+                if (!response.ok) throw new Error('Network response was not ok');
+                
+                setStatus('Connected', 'status-connected');
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let buffer = '';
 
-        source.onopen = () => setStatus('Connected', 'status-connected');
-        
-        source.onerror = () => {
-            // Only overwrite status if we aren't explicitly waiting for a reboot
-            if (statusDiv.textContent !== 'Applying OTA & Rebooting...') {
-                setStatus('Connection Lost. Retrying...', 'status-disconnected');
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    let lines = buffer.split('\n');
+                    
+                    // Keep the last incomplete line fragment in the buffer
+                    buffer = lines.pop(); 
+
+                    for (let line of lines) {
+                        // Ignore heartbeat spaces
+                        if (line.trim() === '') continue; 
+
+                        const div = document.createElement('div');
+                        div.className = 'log-line';
+                        div.textContent = line;
+                        
+                        if (line.includes('E (')) div.classList.add('error');
+                        else if (line.includes('W (')) div.classList.add('warn');
+                        else if (line.includes('I (')) div.classList.add('info');
+
+                        if (line.includes('OTA Success! Rebooting')) {
+                            setStatus('Applying OTA & Rebooting...', 'status-rebooting');
+                        }
+
+                        logsDiv.appendChild(div);
+                    }
+                    if (autoScroll) window.scrollTo(0, document.body.scrollHeight);
+                }
+            } catch (err) {
+                if (statusDiv.textContent !== 'Applying OTA & Rebooting...') {
+                    setStatus('Connection Lost. Retrying...', 'status-disconnected');
+                }
             }
-        };
-
-        source.onmessage = (event) => {
-            const line = document.createElement('div');
-            line.className = 'log-line';
-            line.textContent = event.data;
             
-            if (event.data.includes('E (')) line.classList.add('error');
-            else if (event.data.includes('W (')) line.classList.add('warn');
-            else if (event.data.includes('I (')) line.classList.add('info');
+            // Loop automatically if the stream breaks (reboot/crash)
+            setTimeout(connectStream, 2000); 
+        }
 
-            // Detect the OTA shutdown sequence
-            if (event.data.includes('OTA Success! Rebooting')) {
-                setStatus('Applying OTA & Rebooting...', 'status-rebooting');
-            }
-
-            logsDiv.appendChild(line);
-            
-            if (autoScroll) {
-                logsDiv.scrollTop = logsDiv.scrollHeight;
-            }
-        };
+        connectStream();
     </script>
 </body>
 </html>
