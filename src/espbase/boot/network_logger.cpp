@@ -85,7 +85,7 @@ EspResult<httpd_handle_t> install_network_logger_routes(httpd_handle_t server) {
     }
     ESP_LOGI("HTTP", "Server started on port %d", config.server_port);
   }
-  
+
   httpd_uri_t index_uri = {
       .uri = "/",
       .method = HTTP_GET,
