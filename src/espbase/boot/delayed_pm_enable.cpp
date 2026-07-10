@@ -11,12 +11,14 @@
 static const char* TAG = "PM_BOOT";
 
 enum class PmState {
-  BOOT_WINDOW,   // Timer is running, button press allowed
-  PM_ACTIVE,     // Timer fired, PM configured, button press allowed (for override)
-  PM_OVERRIDDEN  // Button pressed
+  BOOT_WINDOW_NO_OVERRIDE,     // Timer is running
+  BOOT_WINDOW_ALLOW_OVERRIDE,  // Timer is running, button press allowed
+  PM_ACTIVE_ALLOW_OVERRIDE,    // Timer fired, PM configured, button press allowed (for override)
+  PM_ACTIVE_NO_OVERRIDE,       // Timer fired, PM configured, button press ignored
+  PM_OVERRIDDEN                // Button pressed
 };
 
-static DRAM_ATTR volatile PmState s_state = PmState::BOOT_WINDOW;
+static DRAM_ATTR volatile PmState s_state = PmState::BOOT_WINDOW_NO_OVERRIDE;
 static esp_timer_handle_t s_timer_handle = nullptr;
 
 static void apply_pm_override(void* /*arg1*/, uint32_t /*arg2*/) {
@@ -32,7 +34,7 @@ static void IRAM_ATTR boot_button_isr(void* /*arg*/) {
   PmState was_active = s_state;
   s_state = PmState::PM_OVERRIDDEN;
   gpio_set_intr_type(GPIO_NUM_0, GPIO_INTR_DISABLE);  // Never fire again.
-  if (was_active == PmState::PM_ACTIVE) {
+  if (was_active == PmState::PM_ACTIVE_ALLOW_OVERRIDE) {
     BaseType_t high_task_wakeup = pdFALSE;
     xTimerPendFunctionCallFromISR(apply_pm_override, nullptr, 0, &high_task_wakeup);
     if (high_task_wakeup) portYIELD_FROM_ISR();
@@ -44,11 +46,13 @@ static void delete_timer_deferred(void* arg1, uint32_t /*arg2*/) {
 }
 
 static void delayed_pm_callback(void* /*arg*/) {
-  if (s_state == PmState::BOOT_WINDOW) {
+  if (s_state == PmState::BOOT_WINDOW_NO_OVERRIDE ||
+      s_state == PmState::BOOT_WINDOW_ALLOW_OVERRIDE) {
     esp_pm_config_t pm_config = {
         .max_freq_mhz = 240, .min_freq_mhz = 40, .light_sleep_enable = true};
     ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
-    s_state = PmState::PM_ACTIVE;
+    s_state = s_state == PmState::BOOT_WINDOW_NO_OVERRIDE ? PmState::PM_ACTIVE_NO_OVERRIDE
+                                                          : PmState::PM_ACTIVE_ALLOW_OVERRIDE;
     ESP_LOGI(TAG, "Boot window closed. Tickless Idle enabled. You might see no more logs.");
   } else {
     ESP_LOGW(TAG, "Boot button was pressed. Aborting Tickless Idle config.");
@@ -57,11 +61,11 @@ static void delayed_pm_callback(void* /*arg*/) {
   xTimerPendFunctionCall(delete_timer_deferred, s_timer_handle, 0, portMAX_DELAY);
 }
 
-void delayed_pm_enable(bool keep_usb_alive, bool disable_sleep_on_gpio0_press) {
+void delayed_pm_enable(const DelayedPmEnableConfig& config) {
   // If logging over Native USB, sleep will break the monitor connection! Provide an escape hatch
   // that keeps USB alive while still powering down the CPU to test sleep states. This should only
   // be used when debugging. But doesn't seem to achieve anything.
-  if (keep_usb_alive) {
+  if (config.keep_usb_alive) {
     // Prevent the digital/peripheral domain from powering down in sleep
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
 #if CONFIG_IDF_TARGET_ESP32S3
@@ -69,7 +73,10 @@ void delayed_pm_enable(bool keep_usb_alive, bool disable_sleep_on_gpio0_press) {
 #endif
   }
 
-  if (disable_sleep_on_gpio0_press) {
+  if (config.disable_sleep_on_gpio0_press) {
+    if (config.allow_override_after_boot_window) {
+      s_state = PmState::BOOT_WINDOW_ALLOW_OVERRIDE;
+    }
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << GPIO_NUM_0),
         .mode = GPIO_MODE_INPUT,
