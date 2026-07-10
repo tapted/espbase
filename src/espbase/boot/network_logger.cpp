@@ -18,7 +18,7 @@ static constinit CircularHistoryBuffer buffer_;
 static int log_hook(const char* fmt, va_list args) {
   char buf[256];
   int len = vsnprintf(buf, sizeof(buf), fmt, args);
-  
+
   if (len > 0) {
     buffer_.write(buf, len);
   }
@@ -45,7 +45,7 @@ static esp_err_t stream_log_handler(httpd_req_t* req) {
       // Block until writer calls xTaskNotifyGive.
       // Timeout every 2 seconds to send a heartbeat space to keep the router happy.
       if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(2000)) == 0) {
-        if (httpd_resp_send_chunk(req, " ", 1) != ESP_OK) break;
+        if (httpd_resp_send_chunk(req, "\n", 1) != ESP_OK) break;
       }
     }
   }
