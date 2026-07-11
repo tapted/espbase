@@ -15,7 +15,7 @@ EspResult<void> NvsStore::init_flash() {
   return err;
 }
 
-EspResult<NvsStore> NvsStore::open(const char* namespace_name, nvs_open_mode_t mode) {
+EspResult<NvsStore> NvsStore::open(Key namespace_name, nvs_open_mode_t mode) {
   nvs_handle_t handle;
   if (esp_err_t err = nvs_open(namespace_name, mode, &handle)) {
     return EspResult<NvsStore>::fail(err);

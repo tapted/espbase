@@ -53,9 +53,7 @@ class NvsStore {
 
   // Must be called once during boot (e.g., in app_main)
   static EspResult<void> init_flash();
-
-  // Replaces the failing constructor with a safe factory
-  static EspResult<NvsStore> open(const char* namespace_name, nvs_open_mode_t mode = NVS_READWRITE);
+  static EspResult<NvsStore> open(Key namespace_name, nvs_open_mode_t mode = NVS_READWRITE);
 
   void close();
 
