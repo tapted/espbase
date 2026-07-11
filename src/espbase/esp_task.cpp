@@ -1,6 +1,7 @@
 #include "espbase/esp_task.hpp"
 
 #include <esp_pm.h>
+#include <esp_timer.h>
 
 void EspTaskBase::reset() {
   if (task_handle_ != nullptr) {
@@ -98,10 +99,16 @@ EspResult<void> EspTaskBase::start_internal(const TaskConfig& config, TaskFuncti
     return ESP_ERR_INVALID_STATE;  // Return early, the task is active
   }
 
-  // 2. We won the race! We own the initialization.
+  // We won the race! We own the initialization.
   TaskHandle_t new_handle = nullptr;
   stop_requested_ = false;
   terminate_requested_ = false;
+
+  // Delegate to derived classes for specific hardware provisioning.
+  if (EspError err = on_task_claimed(config)) {
+    task_handle_.store(nullptr, std::memory_order_release);
+    return err;
+  }
 
   // Initialize PM Locks
   if (pm_sleep_lock_ == nullptr && config.prevent_light_sleep) {
@@ -148,4 +155,25 @@ void EspTaskBase::terminate_from_task() {
   task_handle_.store(nullptr, std::memory_order_release);  //  Allow re-use.
   vTaskDelete(nullptr);  // Safe thread termination. Does not return.
   for (;;);  // Never reached, but needed to avoid "noreturn function does return" warnings.
+}
+
+EspResult<void> EspTaskBase::configure_hardware_timer(esp_timer_handle_t& timer_handle,
+                                                      bool enable) {
+  if (!enable) {
+    if (timer_handle) {
+      esp_timer_stop(timer_handle);
+      esp_timer_delete(timer_handle);
+      timer_handle = nullptr;
+    }
+    return ESP_OK;
+  }
+  if (timer_handle) {
+    return ESP_OK;  // Already configured
+  }
+  esp_timer_create_args_t timer_args = {};
+  timer_args.callback = [](void* arg) { static_cast<EspTaskBase*>(arg)->notify(); };
+  timer_args.arg = this;
+  timer_args.name = "yielding_hw_tmr";
+
+  return esp_timer_create(&timer_args, &timer_handle);
 }

@@ -14,6 +14,7 @@
 
 struct esp_pm_lock;
 typedef struct esp_pm_lock* esp_pm_lock_handle_t;
+typedef struct esp_timer* esp_timer_handle_t;
 
 struct TaskConfig {
   const char* name = "task";
@@ -33,13 +34,19 @@ struct TaskConfig {
   // If true, instead of starting a new task, start will safely check for an existing task and
   // notify it instead.
   bool notify_if_started = true;
+
+  // If true, delay-based yielding will use the high-resolution hardware esp_timer instead of
+  // FreeRTOS ticks. Ticks are more accurate when light sleep is disabled (+/- 1ms), but can wake up
+  // hundreds of ms early when light sleep interferes. Hardware timers tend to wake up "late" by
+  // 10ms or so but are reliable under light sleep.
+  bool use_hardware_wakeups = false;
 };
 
 // Abstraction over FreeRTOS tasks that provides RAII semantics and safe shutdown capabilities.
 class EspTaskBase {
  public:
   constexpr EspTaskBase() = default;
-  ~EspTaskBase() { reset(); }
+  virtual ~EspTaskBase() { reset(); }
 
   // Tasks cannot be copied or moved (must remain pinned in memory)
   EspTaskBase(const EspTaskBase&) = delete;
@@ -48,7 +55,7 @@ class EspTaskBase {
   EspTaskBase& operator=(EspTaskBase&&) = delete;
 
   // Safely stops the task and releases all resources. Can be called multiple times.
-  void reset();
+  virtual void reset();
 
   // Notifies the task to wake up and optionally clears the stop request flag.
   void notify(bool clear_stop = false);
@@ -77,8 +84,13 @@ class EspTaskBase {
   // Internal orchestrator for FreeRTOS task creation.
   EspResult<void> start_internal(const TaskConfig& config, TaskFunction_t task_code, void* arg);
 
+  // Hook for derived classes to safely allocate resources after winning the start lock.
+  virtual EspResult<void> on_task_claimed(const TaskConfig& /*config*/) { return ESP_OK; }
+
   // Called by the thread's trampoline just before exiting.
   [[noreturn]] void terminate_from_task();
+
+  EspResult<void> configure_hardware_timer(esp_timer_handle_t& timer_handle, bool enable);
 };
 
 template <typename TaskData>

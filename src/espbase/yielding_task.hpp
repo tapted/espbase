@@ -1,5 +1,6 @@
 #pragma once
 
+#include <esp_timer.h>
 #include <optional>
 
 #include "espbase/esp_task.hpp"
@@ -34,10 +35,16 @@ class YieldingTask : public EspTaskBase {
 
   TaskData* data() const { return data_; }
 
+ protected:
+  EspResult<void> on_task_claimed(const TaskConfig& config) override {
+    return configure_hardware_timer(timer_handle_, config.use_hardware_wakeups);
+  }
+
  private:
   TaskData* data_ = nullptr;
   StepFunction step_func_ = nullptr;
   StopFunction stop_func_ = nullptr;
+  esp_timer_handle_t timer_handle_ = nullptr;
 
   static void trampoline(void* arg) {
     auto* instance = static_cast<YieldingTask<TaskData>*>(arg);
@@ -70,7 +77,14 @@ class YieldingTask : public EspTaskBase {
       // 4. Yielding
       if (delay_ms.has_value()) {
         // Remain Active: Keep lock acquired and CPU awake during this sequence delay
-        instance->wait_for_notification(pdMS_TO_TICKS(*delay_ms));
+        if (instance->timer_handle_) {
+          // We have a hardware timer: arm the microsecond timer and sleep infinitely.
+          esp_timer_start_once(instance->timer_handle_, *delay_ms * 1000ULL);
+          instance->wait_for_notification(portMAX_DELAY);
+          esp_timer_stop(instance->timer_handle_);  // notify() might not have fired from the timer.
+        } else {
+          instance->wait_for_notification(pdMS_TO_TICKS(*delay_ms));  // Coarse FreeRTOS tick sleep.
+        }
       } else {
         // Natural Completion: Transition to Idle
         if (instance->stop_func_) instance->stop_func_(*instance);
