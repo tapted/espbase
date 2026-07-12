@@ -6,7 +6,13 @@
 #pragma once
 
 #include <cstdint>
+
+#if LV_USE_SDL
+typedef enum { NVS_READONLY, NVS_READWRITE, NVS_READWRITE_PURGE } nvs_open_mode_t;
+typedef uint32_t nvs_handle_t;
+#else
 #include <nvs.h>
+#endif
 
 #include "espbase/esp_result.hpp"
 
