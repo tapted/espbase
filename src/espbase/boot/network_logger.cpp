@@ -64,8 +64,8 @@ static esp_err_t index_handler(httpd_req_t* req) {
   return httpd_resp_send(req, spa_html, sizeof(spa_html) - 1);
 }
 
-void initialize_network_logger() {
-  buffer_.init(256 * 1024);  // 256 KB circular buffer for logs
+void initialize_network_logger(size_t size_bytes, bool use_psram) {
+  buffer_.init(size_bytes, use_psram ? MALLOC_CAP_SPIRAM : MALLOC_CAP_INTERNAL);
   original_vprintf_ = esp_log_set_vprintf(log_hook);
 }
 

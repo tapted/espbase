@@ -3,13 +3,14 @@
 #include <cstdint>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_heap_caps.h>
 
 class CircularHistoryBuffer {
  public:
   constexpr CircularHistoryBuffer() = default;
   ~CircularHistoryBuffer();
 
-  void init(size_t size);
+  void init(size_t size, uint32_t caps = MALLOC_CAP_SPIRAM);
 
   void register_listener(TaskHandle_t task);
   void remove_listener(TaskHandle_t task);
