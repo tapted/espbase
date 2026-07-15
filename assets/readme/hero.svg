@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+  <title id="title">tapted/espbase</title>
+  <desc id="desc">tapted/espbase: Production-ready C++ foundation for ESP-IDF and FreeRTOS. Shows a system block diagram highlighting NVS, Task, and Boot modules.</desc>
+
+  <rect width="1200" height="320" rx="16" fill="#0A0A0B"/>
+
+  <!-- Structural grid lines -->
+  <path d="M 56 0 L 56 320 M 720 0 L 720 320" stroke="#222" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <g id="title-block" transform="translate(86 80)">
+    <text x="0" y="0" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" fill="#888" letter-spacing="1">INFRASTRUCTURE / C++</text>
+    <text x="0" y="56" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="48" font-weight="bold" fill="#FFF">tapted/espbase</text>
+    <text x="0" y="104" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="24" fill="#CCC">Production-ready C++ foundation</text>
+    <text x="0" y="140" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="24" fill="#CCC">for ESP-IDF and FreeRTOS.</text>
+  </g>
+
+  <g id="project-proof" transform="translate(780 70)">
+    <!-- Core Subsystems Diagram -->
+    <rect x="0" y="0" width="340" height="180" rx="6" fill="#111" stroke="#333" stroke-width="2"/>
+    <text x="24" y="32" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#666">CORE_MODULES</text>
+
+    <!-- NVS Block -->
+    <rect x="24" y="50" width="140" height="40" rx="4" fill="#1A1A1A" stroke="#444" stroke-width="1"/>
+    <text x="94" y="74" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#DDD" text-anchor="middle">nvs_store.hpp</text>
+
+    <!-- Task Block -->
+    <rect x="176" y="50" width="140" height="40" rx="4" fill="#1A1A1A" stroke="#444" stroke-width="1"/>
+    <text x="246" y="74" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#DDD" text-anchor="middle">esp_task.hpp</text>
+
+    <!-- OTA Block -->
+    <rect x="24" y="102" width="292" height="40" rx="4" fill="#1A1A1A" stroke="#444" stroke-width="1"/>
+    <text x="170" y="126" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#DDD" text-anchor="middle">boot / ota_rollback_watchdog</text>
+  </g>
+</svg>
