@@ -84,6 +84,9 @@ class NvsStore {
 
   template <typename T>
   EspResult<void> set_blob(Key key, const T& value) {
+    static_assert(
+        !std::is_pointer_v<T>,
+        "FATAL: Attempting to save a pointer to NVS. You must pass the object by reference.");
     static_assert(std::is_trivially_copyable_v<T>,
                   "NVS Blobs must be trivially copyable POD types.");
     return set_raw_blob(key, &value, sizeof(T));
@@ -91,6 +94,8 @@ class NvsStore {
 
   template <typename T>
   EspResult<T> get_blob(Key key) const {
+    static_assert(!std::is_pointer_v<T>, 
+                "FATAL: Attempting to read a pointer from NVS.");
     static_assert(std::is_trivially_copyable_v<T>,
                   "NVS Blobs must be trivially copyable POD types.");
     T value{};  // Zero-initialize safety
