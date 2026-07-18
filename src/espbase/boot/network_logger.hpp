@@ -2,8 +2,6 @@
 
 #include "espbase/esp_result.hpp"
 
-struct httpd_req;
-typedef struct httpd_req httpd_req_t;
 typedef void* httpd_handle_t;
 
 void initialize_network_logger(size_t size_bytes = 256 * 1024, bool use_psram = true);
