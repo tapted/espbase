@@ -1,0 +1,11 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "espbase_tests",
+      "displayName": "Tests for espbase",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build"
+    }
+  ]
+}

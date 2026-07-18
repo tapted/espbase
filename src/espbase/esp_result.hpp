@@ -2,6 +2,7 @@
 
 #include <esp_err.h>
 #include <esp_log.h>
+#include <cassert>
 #include <optional>
 
 class [[nodiscard]] EspResultBase {
@@ -34,7 +35,9 @@ class [[nodiscard]] EspResult : public EspResultBase {
   static EspResult fail(esp_err_t e) { return EspResult(e, error_tag_t{}); }
   static EspResult ok(T val) { return EspResult(std::move(val), ok_tag_t{}); }
 
-  constexpr EspResult(esp_err_t e, error_tag_t = error_tag_t{}) : EspResultBase(e) {}
+  constexpr EspResult(esp_err_t e, error_tag_t = error_tag_t{}) : EspResultBase(e) {
+    assert(e != ESP_OK);
+  }
   EspResult(T val, ok_tag_t = ok_tag_t{}) : EspResultBase(ESP_OK), value_(std::move(val)) {}
   constexpr EspResult(EspError e);
 
@@ -42,6 +45,16 @@ class [[nodiscard]] EspResult : public EspResultBase {
   T* operator->() { return &(*value_); }
   const T& operator*() const { return *value_; }
   const T* operator->() const { return &(*value_); }
+
+  // Overload log_error to act as a pass-through
+  EspResult<T> log_error(const char* tag, const char* msg) const & {
+    EspResultBase::log_error(tag, msg);
+    return *this;
+  }
+  EspResult<T> log_error(const char* tag, const char* msg) && {
+    EspResultBase::log_error(tag, msg);
+    return std::move(*this);
+  }
 };
 
 template <>
@@ -49,6 +62,12 @@ class EspResult<void> : public EspResultBase {
  public:
   constexpr EspResult(esp_err_t e = ESP_OK) : EspResultBase(e) {}
   constexpr EspResult(EspError e);
+
+  // Overload log_error to act as a pass-through
+  EspResult<void> log_error(const char* tag, const char* msg) const {
+    EspResultBase::log_error(tag, msg);
+    return *this;
+  }
 };
 
 class [[nodiscard]] EspError {
@@ -83,6 +102,7 @@ class [[nodiscard]] EspError {
 
 template <typename T>
 constexpr EspResult<T>::EspResult(EspError e) : EspResultBase(e) {
+  assert(static_cast<esp_err_t>(e) != ESP_OK);
 }
 constexpr EspResult<void>::EspResult(EspError e) : EspResultBase(e) {
 }
