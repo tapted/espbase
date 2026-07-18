@@ -55,23 +55,39 @@ class [[nodiscard]] EspResult : public EspResultBase {
   EspResult<void> strip() const;
 
   // Overload log_error to act as a pass-through
+
+  // 1. const lvalue overload for copyable types: returns EspResult<T> by copying.
   EspResult<T> log_error(const char* tag, const char* msg) const&
     requires std::is_copy_constructible_v<T>
   {
     EspResultBase::log_error(tag, msg);
     return *this;
   }
+
+  // 2. const lvalue overload for non-copyable types (e.g. NvsStore): degrades to esp_err_t because
+  // T cannot be copied.
+  //    NOTE: If you want to return an EspResult/chain on a non-copyable lvalue, call `.strip()`
+  //    first to discard the value and obtain a copyable/movable EspResult<void> which can then
+  //    chain log_error.
   esp_err_t log_error(const char* tag, const char* msg) const&
     requires(!std::is_copy_constructible_v<T>)
   {
     return EspResultBase::log_error(tag, msg);
   }
+
+  // 3. rvalue overload for move-constructible types: returns EspResult<T> by moving.
   EspResult<T> log_error(const char* tag, const char* msg) &&
     requires std::is_move_constructible_v<T>
   {
     EspResultBase::log_error(tag, msg);
     return std::move(*this);
   }
+
+  // 4. rvalue overload for non-move-constructible types: degrades to esp_err_t because T cannot be
+  // moved.
+  //    NOTE: If you want to return an EspResult/chain on a non-moveable type, call `.strip()` first
+  //    to discard the value and obtain a copyable/movable EspResult<void> which can then chain
+  //    log_error.
   esp_err_t log_error(const char* tag, const char* msg) &&
       requires(!std::is_move_constructible_v<T>) { return EspResultBase::log_error(tag, msg); }
 };
