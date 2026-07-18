@@ -1,9 +1,10 @@
 #pragma once
 
+#include <cassert>
 #include <esp_err.h>
 #include <esp_log.h>
-#include <cassert>
 #include <optional>
+#include <type_traits>
 
 class [[nodiscard]] EspResultBase {
  protected:
@@ -36,7 +37,11 @@ class [[nodiscard]] EspResult : public EspResultBase {
   static EspResult ok(T val) { return EspResult(std::move(val), ok_tag_t{}); }
 
   constexpr EspResult(esp_err_t e, error_tag_t = error_tag_t{}) : EspResultBase(e) {
-    assert(e != ESP_OK);
+    if (e == ESP_OK) {
+      if constexpr (std::is_default_constructible_v<T>) {
+        value_.emplace();
+      }
+    }
   }
   EspResult(T val, ok_tag_t = ok_tag_t{}) : EspResultBase(ESP_OK), value_(std::move(val)) {}
   constexpr EspResult(EspError e);
@@ -46,15 +51,29 @@ class [[nodiscard]] EspResult : public EspResultBase {
   const T& operator*() const { return *value_; }
   const T* operator->() const { return &(*value_); }
 
+  // Allow explicit stripping of the value for easy returns of results that don't need the value.
+  EspResult<void> strip() const;
+
   // Overload log_error to act as a pass-through
-  EspResult<T> log_error(const char* tag, const char* msg) const & {
+  EspResult<T> log_error(const char* tag, const char* msg) const&
+    requires std::is_copy_constructible_v<T>
+  {
     EspResultBase::log_error(tag, msg);
     return *this;
   }
-  EspResult<T> log_error(const char* tag, const char* msg) && {
+  esp_err_t log_error(const char* tag, const char* msg) const&
+    requires(!std::is_copy_constructible_v<T>)
+  {
+    return EspResultBase::log_error(tag, msg);
+  }
+  EspResult<T> log_error(const char* tag, const char* msg) &&
+    requires std::is_move_constructible_v<T>
+  {
     EspResultBase::log_error(tag, msg);
     return std::move(*this);
   }
+  esp_err_t log_error(const char* tag, const char* msg) &&
+      requires(!std::is_move_constructible_v<T>) { return EspResultBase::log_error(tag, msg); }
 };
 
 template <>
@@ -102,7 +121,16 @@ class [[nodiscard]] EspError {
 
 template <typename T>
 constexpr EspResult<T>::EspResult(EspError e) : EspResultBase(e) {
-  assert(static_cast<esp_err_t>(e) != ESP_OK);
+  if (static_cast<esp_err_t>(e) == ESP_OK) {
+    if constexpr (std::is_default_constructible_v<T>) {
+      value_.emplace();
+    }
+  }
 }
 constexpr EspResult<void>::EspResult(EspError e) : EspResultBase(e) {
+}
+
+template <typename T>
+EspResult<void> EspResult<T>::strip() const {
+  return EspResult<void>(err_);
 }
