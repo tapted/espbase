@@ -74,7 +74,7 @@ EspResult<httpd_handle_t> install_network_logger_routes(httpd_handle_t server) {
     // No server - start one.
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     // Allow SPA, SSE stream, and standard REST requests concurrently
-    config.max_open_sockets = 4;
+    config.max_open_sockets = 4 + 3;  // "3 are reserved for internal use by the server"
 
     // Automatically kill old dead connections if a new client tries to connect
     config.lru_purge_enable = true;
@@ -86,7 +86,7 @@ EspResult<httpd_handle_t> install_network_logger_routes(httpd_handle_t server) {
   }
 
   httpd_uri_t index_uri = {
-      .uri = "/",
+      .uri = "/logs/",
       .method = HTTP_GET,
       .handler = index_handler,
       .user_ctx = nullptr,
