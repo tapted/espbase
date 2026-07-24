@@ -10,6 +10,8 @@
 #include "cJSON.h"
 #include "espbase/json_fwd.h"
 
+void init_json_to_use_psram();
+
 // RAII Deleters
 struct cJSONDeleter {
   void operator()(cJSON* p) const { cJSON_Delete(p); }
