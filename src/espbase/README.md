@@ -28,3 +28,27 @@ This directory contains core hardware abstraction wrappers, network boot utiliti
 
 ### 6. Boot Utilities (`boot/`)
 *Placeholder: Network loggers and boot configuration helpers.*
+
+### 6. `trampoline()` (`trampoline.hpp`)
+
+`trampoline()` is a compile-time utility that bridges the gap between object-oriented C++ and C-style RTOS APIs. It automatically deduces the class type of a member function and generates a stateless `void (*)(void*)` callback, completely eliminating the need to write boilerplate static wrapper functions manually.
+
+#### Example Usage
+
+```cpp
+class Device {
+ public:
+  void pump_queue() {
+    // Process queue...
+  }
+
+  void schedule_pump() {
+    // 1. Generate the C-style function pointer
+    trampoline_func_t callback = trampoline<&Device::pump_queue>();
+    
+    // 2. Execute it by passing the instance pointer
+    callback(this);
+  }
+};
+
+```
