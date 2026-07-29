@@ -157,8 +157,7 @@ void EspTaskBase::terminate_from_task() {
   for (;;);  // Never reached, but needed to avoid "noreturn function does return" warnings.
 }
 
-EspResult<void> EspTaskBase::configure_hardware_timer(esp_timer_handle_t& timer_handle,
-                                                      bool enable) {
+EspResult<> EspTaskBase::configure_hardware_timer(esp_timer_handle_t& timer_handle, bool enable) {
   if (!enable) {
     if (timer_handle) {
       esp_timer_stop(timer_handle);

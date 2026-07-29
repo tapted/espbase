@@ -90,7 +90,7 @@ class EspTaskBase {
   // Called by the thread's trampoline just before exiting.
   [[noreturn]] void terminate_from_task();
 
-  EspResult<void> configure_hardware_timer(esp_timer_handle_t& timer_handle, bool enable);
+  EspResult<> configure_hardware_timer(esp_timer_handle_t& timer_handle, bool enable);
 };
 
 template <typename TaskData>
