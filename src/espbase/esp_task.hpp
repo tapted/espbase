@@ -11,9 +11,8 @@
 #include <freertos/task.h>
 
 #include "espbase/esp_result.hpp"
+#include "espbase/pm_lock.hpp"
 
-struct esp_pm_lock;
-typedef struct esp_pm_lock* esp_pm_lock_handle_t;
 typedef struct esp_timer* esp_timer_handle_t;
 
 struct TaskConfig {
@@ -73,10 +72,8 @@ class EspTaskBase {
   volatile bool stop_requested_ = false;
   volatile bool terminate_requested_ = false;
 
-  // --- PM Lock Management ---
-  esp_pm_lock_handle_t pm_sleep_lock_ = nullptr;
-  esp_pm_lock_handle_t pm_apb_lock_ = nullptr;
-  bool locks_acquired_ = false;
+  PmLock pm_sleep_lock_{PmLock::NoLightSleep};
+  PmLock pm_apb_lock_{PmLock::ApbFreqMax};
 
   void acquire_pm_locks();
   void release_pm_locks();

@@ -1,6 +1,5 @@
 #include "espbase/esp_task.hpp"
 
-#include <esp_pm.h>
 #include <esp_timer.h>
 
 void EspTaskBase::reset() {
@@ -28,15 +27,8 @@ void EspTaskBase::reset() {
     join_sem_ = nullptr;
   }
 
-  if (locks_acquired_) release_pm_locks();
-  if (pm_sleep_lock_) {
-    esp_pm_lock_delete(pm_sleep_lock_);
-    pm_sleep_lock_ = nullptr;
-  }
-  if (pm_apb_lock_) {
-    esp_pm_lock_delete(pm_apb_lock_);
-    pm_apb_lock_ = nullptr;
-  }
+  pm_apb_lock_.enable(false);
+  pm_sleep_lock_.enable(false);
 }
 
 void EspTaskBase::notify(bool clear_stop) {
@@ -62,19 +54,13 @@ void EspTaskBase::log_high_watermark() {
 }
 
 void EspTaskBase::acquire_pm_locks() {
-  if (!locks_acquired_) {
-    if (pm_sleep_lock_) esp_pm_lock_acquire(pm_sleep_lock_);
-    if (pm_apb_lock_) esp_pm_lock_acquire(pm_apb_lock_);
-    locks_acquired_ = true;
-  }
+  pm_sleep_lock_.acquire_if_enabled();
+  pm_apb_lock_.acquire_if_enabled();
 }
 
 void EspTaskBase::release_pm_locks() {
-  if (locks_acquired_) {
-    if (pm_sleep_lock_) esp_pm_lock_release(pm_sleep_lock_);
-    if (pm_apb_lock_) esp_pm_lock_release(pm_apb_lock_);
-    locks_acquired_ = false;
-  }
+  pm_apb_lock_.release();
+  pm_sleep_lock_.release();
 }
 
 EspResult<void> EspTaskBase::start_internal(const TaskConfig& config, TaskFunction_t task_code,
@@ -111,12 +97,9 @@ EspResult<void> EspTaskBase::start_internal(const TaskConfig& config, TaskFuncti
   }
 
   // Initialize PM Locks
-  if (pm_sleep_lock_ == nullptr && config.prevent_light_sleep) {
-    esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, config.name, &pm_sleep_lock_);
-  }
-  if (pm_apb_lock_ == nullptr && config.lock_apb_freq) {
-    esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, config.name, &pm_apb_lock_);
-  }
+  pm_sleep_lock_.enable(config.prevent_light_sleep, config.name);
+  pm_apb_lock_.enable(config.lock_apb_freq, config.name);
+
   if (sync_sem_ == nullptr) {
     sync_sem_ = xSemaphoreCreateBinary();
   } else {
