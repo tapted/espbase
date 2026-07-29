@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <freertos/task.h>
 #include <type_traits>
 
 #include "espbase/trampoline.hpp"
@@ -33,24 +34,31 @@ class MainLoop {
     return push_func(trampoline<MemFn>(), safe_instance);
   }
 
-  bool push_func(void (*execute)(void*), void* instance) {
-    AppCommand cmd{.instance = instance, .execute = execute};
-
-    // Note: If you ever push from a hardware interrupt, you must use
-    // xQueueSendFromISR with a higherPriorityTaskWoken check instead.
-    return xQueueSend(queue_, &cmd, 0) == pdTRUE;
-  }
-
   void run_forever() {
     AppCommand cmd;
     while (true) {
       if (xQueueReceive(queue_, &cmd, portMAX_DELAY)) {
-        if (cmd.execute) cmd.execute(cmd.instance);
+        cmd.execute(cmd.instance);
       }
     }
   }
 
  private:
+  bool push_func(void (*execute)(void*), void* instance) {
+    AppCommand cmd{.instance = instance, .execute = execute};
+
+    if (xPortInIsrContext()) {
+      // Safe to call from true hardware interrupts
+      BaseType_t high_task_woken = pdFALSE;
+      BaseType_t res = xQueueSendFromISR(queue_, &cmd, &high_task_woken);
+      if (high_task_woken) portYIELD_FROM_ISR();
+      return res == pdTRUE;
+    } else {
+      // Standard FreeRTOS task context (including the default esp_timer task)
+      return xQueueSend(queue_, &cmd, 0) == pdTRUE;
+    }
+  }
+
   StaticQueue_t state_;
   uint8_t storage_[QueueSize * sizeof(AppCommand)];
 
