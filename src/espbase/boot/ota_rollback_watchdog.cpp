@@ -1,5 +1,6 @@
 #include "espbase/boot/ota_rollback_watchdog.hpp"
 
+#include <atomic>
 #include <esp_log.h>
 #include <esp_ota_ops.h>
 #include <esp_system.h>
@@ -7,6 +8,7 @@
 
 static const char* TAG = "OTA_WDG";
 static esp_timer_handle_t s_watchdog_timer = nullptr;
+static std::atomic<int> startup_checks = 0;
 
 static void watchdog_timer_callback(void* /*arg*/) {
   esp_ota_img_states_t ota_state;
@@ -22,7 +24,8 @@ static void watchdog_timer_callback(void* /*arg*/) {
   }
 }
 
-void start_ota_rollback_watchdog(uint32_t timeout_ms) {
+void start_ota_rollback_watchdog(int checks, uint32_t timeout_ms) {
+  startup_checks = checks;
   const esp_partition_t* running = esp_ota_get_running_partition();
   esp_ota_img_states_t ota_state;
 
@@ -68,5 +71,11 @@ void mark_ota_valid() {
         s_watchdog_timer = nullptr;
       }
     }
+  }
+}
+
+void startup_gate_passed() {
+  if (--startup_checks == 0) {
+    mark_ota_valid();
   }
 }
