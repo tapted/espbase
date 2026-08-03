@@ -1,15 +1,18 @@
 #pragma once
 
+#include <utility> 
+
 namespace detail {
 // Primary template
 template <typename T>
 struct mem_fn_traits;
 
-// Partial specialization to extract the class type (C)
+// Partial specialization to extract the class type (C), return type (R), and Args...
 template <typename R, typename C, typename... Args>
 struct mem_fn_traits<R (C::*)(Args...)> {
   using class_type = C;
   using return_type = R;
+  using c_func_type = R (*)(void*, Args...);
 };
 
 // Support for const methods
@@ -17,6 +20,7 @@ template <typename R, typename C, typename... Args>
 struct mem_fn_traits<R (C::*)(Args...) const> {
   using class_type = C;
   using return_type = R;
+  using c_func_type = R (*)(void*, Args...);
 };
 
 // Support for noexcept methods (C++17+)
@@ -24,6 +28,7 @@ template <typename R, typename C, typename... Args>
 struct mem_fn_traits<R (C::*)(Args...) noexcept> {
   using class_type = C;
   using return_type = R;
+  using c_func_type = R (*)(void*, Args...);
 };
 
 // Support for const noexcept methods
@@ -31,24 +36,27 @@ template <typename R, typename C, typename... Args>
 struct mem_fn_traits<R (C::*)(Args...) const noexcept> {
   using class_type = C;
   using return_type = R;
+  using c_func_type = R (*)(void*, Args...);
 };
 }  // namespace detail
-
-template <typename R>
-using trampoline_func_t = R (*)(void*);
 
 /**
  * @brief Generates a zero-allocation C-style function pointer from a C++ member function.
  *
  * @tparam MemFn The member function pointer (e.g., &MyClass::my_method)
- * @return `R (*)(void*)` A C-style function pointer compatible with FreeRTOS queues.
+ * @return A C-style function pointer compatible with the member function's arguments.
  * @example `{ .callback = trampoline<&MyClass::my_method>(), .user_ctx = this }`
  */
 template <auto MemFn>
-trampoline_func_t<typename detail::mem_fn_traits<decltype(MemFn)>::return_type> trampoline() {
-  using T = typename detail::mem_fn_traits<decltype(MemFn)>::class_type;
-  using R = typename detail::mem_fn_traits<decltype(MemFn)>::return_type;
+constexpr typename detail::mem_fn_traits<decltype(MemFn)>::c_func_type trampoline() {
+  using Traits = detail::mem_fn_traits<decltype(MemFn)>;
+  using T = typename Traits::class_type;
+  using R = typename Traits::return_type;
+  using CFunc = typename Traits::c_func_type;
 
-  // The '+' forces the lambda to decay to `R (*)(void*)`
-  return +[](void* ptr) -> R { return (static_cast<T*>(ptr)->*MemFn)(); };
+  // The generic lambda naturally decays to CFunc when explicitly cast.
+  // The compiler deduces `auto...` to perfectly match `Args...`.
+  return static_cast<CFunc>([](void* ptr, auto... args) -> R {
+    return (static_cast<T*>(ptr)->*MemFn)(std::forward<decltype(args)>(args)...);
+  });
 }
