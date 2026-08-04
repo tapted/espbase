@@ -37,8 +37,10 @@ void start_ota_rollback_watchdog(int checks, uint32_t timeout_ms) {
     return;
   }
 
-  ESP_LOGW(TAG, "Unconfirmed OTA firmware detected. Starting %lu ms rollback watchdog...",
-           timeout_ms);
+  ESP_LOGW(TAG,
+           "Unconfirmed OTA firmware detected. Starting %lu ms rollback watchdog. %d gates to pass "
+           "before marking OTA as valid.",
+           timeout_ms, startup_checks.load());
 
   esp_timer_create_args_t timer_args = {
       .callback = &watchdog_timer_callback,
@@ -61,7 +63,7 @@ void mark_ota_valid() {
   // Only attempt validation if we actually need to
   if (esp_ota_get_state_partition(running, &ota_state) == ESP_OK) {
     if (ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
-      ESP_LOGI(TAG, "Network connection successful. Marking OTA update as VALID.");
+      ESP_LOGI(TAG, "Marking OTA update as VALID.");
       esp_ota_mark_app_valid_cancel_rollback();
 
       // Clean up the timer so it doesn't waste memory
@@ -74,7 +76,8 @@ void mark_ota_valid() {
   }
 }
 
-void startup_gate_passed() {
+void startup_gate_passed(const char* name) {
+  ESP_LOGI(TAG, "Startup gate passed: %s", name);
   if (--startup_checks == 0) {
     mark_ota_valid();
   }

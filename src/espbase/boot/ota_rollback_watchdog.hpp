@@ -13,4 +13,4 @@ void mark_ota_valid();
 // We use a static atomic counter to track the number of startup checks that need to complete before
 // marking the app as valid and canceling any rollback. This ensures that both the NTP sync and
 // display initialization have completed successfully before proceeding.
-void startup_gate_passed();
+void startup_gate_passed(const char* name);
