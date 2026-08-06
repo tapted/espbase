@@ -106,7 +106,6 @@ class NvsStore {
   EspResult<void> commit();
 
   // --- Schema Migration ---
-  // Uses a template functor instead of std::function to avoid heap allocation
   template <typename F>
   EspResult<void> migrate_schema(uint32_t target_version, F migration_func) {
     if (!handle_) return ESP_ERR_INVALID_STATE;
