@@ -24,7 +24,7 @@ class [[nodiscard]] EspResultBase {
   esp_err_t error() const { return err_; }
   esp_err_t log_error(const char* tag, const char* msg) const {
     if (err_ != ESP_OK) {
-      ESP_LOGE(tag, "%s: %s", msg, esp_err_to_name(err_));
+      ESP_LOGE(tag, "%s: %s(0x%x)", msg, esp_err_to_name(err_), err_);
     }
     return err_;
   }
@@ -136,7 +136,7 @@ class [[nodiscard]] EspError {
 
   esp_err_t log(const char* tag, const char* msg) const {
     if (err_ != ESP_OK) {
-      ESP_LOGE(tag, "%s: %s", msg, esp_err_to_name(err_));
+      ESP_LOGE(tag, "%s: %s(0x%x)", msg, esp_err_to_name(err_), err_);
     }
     return err_;
   }
