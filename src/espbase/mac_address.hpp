@@ -39,7 +39,13 @@ namespace std {
 
 template <>
 struct hash<MacAddress> {
-  size_t operator()(const MacAddress& mac) const;
+  size_t operator()(const MacAddress& mac) const {
+    // Pack the first 4 bytes into one integer, and the last 2 into another,
+    // then XOR them. It's extremely fast and provides a great hash distribution.
+    uint32_t a = (mac[0] << 24) | (mac[1] << 16) | (mac[2] << 8) | mac[3];
+    uint32_t b = (mac[4] << 8) | mac[5];
+    return hash<uint32_t>()(a) ^ hash<uint32_t>()(b);
+  }
 };
 
 }  // namespace std
