@@ -4,10 +4,10 @@
 #include <cstring>
 #include <functional>
 
-#if LV_USE_SDL
-#include <processthreadsapi.h>
-#else
+#if __has_include(<esp_mac.h>)
 #include <esp_mac.h>
+#else
+#include <processthreadsapi.h>
 #endif
 
 MacAddress::MacAddress(const uint8_t* buffer) {
@@ -17,12 +17,12 @@ MacAddress::MacAddress(const uint8_t* buffer) {
 const MacAddress& MacAddress::mine() {
   static const MacAddress my_mac = []() {
     uint8_t mac[6]{};
-#if LV_USE_SDL
+#if __has_include(<esp_mac.h>)
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+#else
     DWORD pid = GetCurrentProcessId();
     mac[4] = (pid >> 8) & 0xFF;
     mac[5] = pid & 0xFF;
-#else
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
 #endif
     return MacAddress(mac);
   }();

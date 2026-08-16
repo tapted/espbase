@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 
 // Represents a MAC address (6 bytes) and provides utility functions for formatting and comparison.
 class MacAddress {
@@ -35,9 +36,6 @@ class MacAddress {
 };
 
 namespace std {
-
-template <class>
-struct hash;
 
 template <>
 struct hash<MacAddress> {
