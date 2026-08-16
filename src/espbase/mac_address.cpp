@@ -2,7 +2,6 @@
 
 #include <cstdio>
 #include <cstring>
-#include <functional>
 
 #if __has_include(<esp_mac.h>)
 #include <esp_mac.h>
