@@ -10,7 +10,7 @@ class CircularHistoryBuffer {
   constexpr CircularHistoryBuffer() = default;
   ~CircularHistoryBuffer();
 
-  void init(size_t size, uint32_t caps = MALLOC_CAP_SPIRAM);
+  bool init(size_t size, uint32_t caps = MALLOC_CAP_SPIRAM);
 
   void register_listener(TaskHandle_t task);
   void remove_listener(TaskHandle_t task);

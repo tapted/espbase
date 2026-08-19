@@ -65,7 +65,10 @@ static esp_err_t index_handler(httpd_req_t* req) {
 }
 
 void initialize_network_logger(size_t size_bytes, bool use_psram) {
-  buffer_.init(size_bytes, use_psram ? MALLOC_CAP_SPIRAM : MALLOC_CAP_INTERNAL);
+  if (!buffer_.init(size_bytes, use_psram ? MALLOC_CAP_SPIRAM : MALLOC_CAP_INTERNAL)) {
+    ESP_LOGE("NetworkLogger", "Failed to allocate circular buffer for network logger");
+    return;
+  }
   original_vprintf_ = esp_log_set_vprintf(log_hook);
 }
 

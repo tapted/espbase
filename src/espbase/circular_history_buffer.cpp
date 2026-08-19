@@ -5,9 +5,10 @@
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 
-void CircularHistoryBuffer::init(size_t size, uint32_t caps) {
+bool CircularHistoryBuffer::init(size_t size, uint32_t caps) {
   size_ = size;
   buffer_ = (char*)heap_caps_malloc(size_, caps);
+  return buffer_ != nullptr;
 }
 
 CircularHistoryBuffer::~CircularHistoryBuffer() {
