@@ -8,6 +8,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/timers.h>
 
+#include "sdkconfig.h"
+
 static const char* TAG = "PM_BOOT";
 
 enum class PmState {
@@ -49,7 +51,10 @@ static void delayed_pm_callback(void* /*arg*/) {
   if (s_state == PmState::BOOT_WINDOW_NO_OVERRIDE ||
       s_state == PmState::BOOT_WINDOW_ALLOW_OVERRIDE) {
     esp_pm_config_t pm_config = {
-        .max_freq_mhz = 240, .min_freq_mhz = 40, .light_sleep_enable = true};
+        .max_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
+        .min_freq_mhz = 40,
+        .light_sleep_enable = true,
+    };
     ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
     s_state = s_state == PmState::BOOT_WINDOW_NO_OVERRIDE ? PmState::PM_ACTIVE_NO_OVERRIDE
                                                           : PmState::PM_ACTIVE_ALLOW_OVERRIDE;
