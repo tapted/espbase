@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <esp_log.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -13,7 +14,7 @@ struct AppCommand {
   void (*execute)(void*);
 };
 
-template <size_t QueueSize = 50>
+template <size_t QueueSize = 128>
 class MainLoop {
  public:
   MainLoop() : queue_(xQueueCreateStatic(QueueSize, sizeof(AppCommand), storage_, &state_)) {}
@@ -31,7 +32,11 @@ class MainLoop {
     // void*. This guarantees the compiler applies any necessary memory offsets if T inherits from
     // ExpectedClass. Then pass the safely adjusted pointer into the erased context.
     ExpectedClass* safe_instance = static_cast<ExpectedClass*>(instance);
-    return push_func(trampoline<MemFn>(), safe_instance);
+    bool result = push_func(trampoline<MemFn>(), safe_instance);
+    if (!result) {
+      ESP_LOGE("MainLoop", "Failed to push command to queue. Queue may be full.");
+    }
+    return result;
   }
 
   void run_forever() {
