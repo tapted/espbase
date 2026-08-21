@@ -18,6 +18,7 @@ enable_testing()
 add_executable(espbase_tests
     espbase/esp_result_test.cpp
     espbase/stack_json/document_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/document.cpp
 )
 
 target_include_directories(espbase_tests PRIVATE
