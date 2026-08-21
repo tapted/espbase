@@ -8,16 +8,49 @@ TEST(DocumentTest, DeviceTree) {
   auto device = path("device");
   auto device_prop = path("device", "prop");  // We can build composition helpers for this
 
-  auto tree = stack_json(node(path("name"), "Temperatures"),
+  auto tree = stack_json(node(path("name"), "Temperatures"),  //
                          node(path("device", "identifier"), "my_device_id"),
-                         node(path("device", "prop", "units"), "degrees")
-                         // node(device_prop, 22) // (Assuming a NumberNode implementation)
-  );
+                         node(path("device", "prop", "units"), "degrees"),
+                         node(path("device", "prop", "value"), 22));
 
   StackBuffer<256> buffer;
   tree.emit(buffer);
 
   EXPECT_EQ(
       buffer.view(),
-      R"({"name":"Temperatures","device":{"identifier":"my_device_id","prop":{"units":"degrees"}}})");
+      R"({"name":"Temperatures","device":{"identifier":"my_device_id","prop":{"units":"degrees","value":22}}})");
+}
+
+TEST(DocumentTest, ArrayOfPrimitives) {
+  auto tree = stack_json(node(path("numbers"), stack_array(1, 2, 3)),
+                         node(path("strings"), stack_array("a", "b", "c")));
+
+  StackBuffer<256> buffer;
+  tree.emit(buffer);
+
+  EXPECT_EQ(buffer.view(), R"({"numbers":[1,2,3],"strings":["a","b","c"]})");
+}
+
+TEST(DocumentTest, ArrayOfObjects) {
+  auto tree = stack_json(node(path("users"),                                        //
+                              stack_array(stack_json(node(path("id"), 1),           //
+                                                     node(path("name"), "Alice")),  //
+                                          stack_json(node(path("id"), 2),           //
+                                                     node(path("name"), "Bob")))));
+
+  StackBuffer<256> buffer;
+  tree.emit(buffer);
+
+  EXPECT_EQ(buffer.view(), R"({"users":[{"id":1,"name":"Alice"},{"id":2,"name":"Bob"}]})");
+}
+
+TEST(DocumentTest, NestedArrays) {
+  auto tree = stack_json(node(path("matrix"),                 //
+                              stack_array(stack_array(1, 0),  //
+                                          stack_array(0, 1))));
+
+  StackBuffer<256> buffer;
+  tree.emit(buffer);
+
+  EXPECT_EQ(buffer.view(), R"({"matrix":[[1,0],[0,1]]})");
 }

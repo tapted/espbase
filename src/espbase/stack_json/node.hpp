@@ -5,6 +5,7 @@
 
 #include "espbase/stack_json/buffer.hpp"
 #include "espbase/stack_json/path.hpp"
+#include "espbase/stack_json/value.hpp"
 
 namespace sjson {
 class NodeBase {
@@ -38,6 +39,27 @@ class StringNode : public NodeBase {
     emitted_ = true;  // Mark complete
   }
 };
+
+template <typename PathT, typename ValueT>
+class ValueNode : public NodeBase {
+  PathT path_;
+  ValueT value_;
+
+ public:
+  ValueNode(PathT p, ValueT v) : path_(p), value_(std::move(v)) {}
+
+  const PathBase& path() const override { return path_; }
+
+  void emit_value(Buffer& buffer) override {
+    write_json_value(buffer, value_);
+    emitted_ = true;
+  }
+};
+
+template <typename PathT, typename ValueT>
+auto node(PathT p, ValueT val) {
+  return ValueNode<PathT, ValueT>(p, std::move(val));
+}
 
 template <typename PathT>
 auto node(PathT p, const char* val) {
