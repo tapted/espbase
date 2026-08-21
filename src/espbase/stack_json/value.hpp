@@ -15,9 +15,16 @@ class ArrayDocument;
 
 template <typename T>
 void write_json_value(Buffer& buffer, T& value) {
+  using DecayedT = std::decay_t<T>;
   if constexpr (std::is_convertible_v<T, std::string_view>) {
     // Strings
     buffer.write_escaped(std::string_view(value));
+  } else if constexpr (std::is_same_v<DecayedT, bool>) {
+    // Intercept bool before is_integral catches it
+    buffer.write(value ? "true" : "false");
+  } else if constexpr (std::is_same_v<DecayedT, std::nullptr_t>) {
+    // Handle null values
+    buffer.write("null");
   } else if constexpr (std::is_integral_v<T>) {
     // Integers
     char buf[32];

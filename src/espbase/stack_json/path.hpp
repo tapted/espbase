@@ -2,6 +2,7 @@
 
 #include <array>
 #include <string_view>
+#include <utility>
 
 namespace sjson {
 class PathBase {
@@ -23,11 +24,28 @@ template <std::size_t Depth>
 class StaticPath : public PathBase {
   std::array<std::string_view, Depth> elements_;
 
+ private:
+  // Helper to unpack existing elements and pass them to the new constructor
+  template <std::size_t... I, typename... Args>
+  auto append_impl(std::index_sequence<I...>, Args... args) const {
+    // Creates a new StaticPath with Depth + the number of new arguments
+    return StaticPath<Depth + sizeof...(Args)>(elements_[I]..., args...);
+  }
+
  public:
   template <typename... Args>
-  constexpr StaticPath(Args... args) : elements_{std::string_view(args)...} {}
+  constexpr StaticPath(Args... args) : elements_{std::string_view(args)...} {
+    static_assert(sizeof...(Args) == Depth, "Depth mismatch");
+  }
+
   std::size_t depth() const override { return Depth; }
   std::string_view get_element(std::size_t index) const override { return elements_[index]; }
+
+  // Syntactic Sugar: Extend the path
+  template <typename... Args>
+  auto operator()(Args... args) const {
+    return append_impl(std::make_index_sequence<Depth>{}, args...);
+  }
 };
 
 template <typename... Args>

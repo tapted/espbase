@@ -79,3 +79,76 @@ TEST(DocumentTest, EscapedKeys) {
 
   EXPECT_EQ(buffer.view(), R"({"weird\"key\nname":"value"})");
 }
+
+TEST(PathTest, PathComposition) {
+  auto device = path("device");
+  auto device_prop = device("prop");
+
+  // You can append single elements
+  auto value_path = device_prop("value");
+  EXPECT_EQ(value_path.depth(), 3);
+  EXPECT_EQ(value_path.get_element(2), "value");
+
+  // Or append multiple elements at once
+  auto deep_path = device("prop", "sensors", "temperature");
+  EXPECT_EQ(deep_path.depth(), 4);
+  EXPECT_EQ(deep_path.get_element(3), "temperature");
+}
+
+TEST(DocumentTest, SugarSyntax) {
+  auto device = path("device");
+  auto device_prop = device("prop");
+
+  auto tree = stack_json(node(path("name"), "Temperatures"),          //
+                         node(device("identifier"), "my_device_id"),  //
+                         node(device_prop("units"), "degrees"),       //
+                         node(device_prop("value"), 22));
+
+  StackBuffer<256> buffer;
+  tree.emit(buffer);
+
+  EXPECT_EQ(
+      buffer.view(),
+      R"({"name":"Temperatures","device":{"identifier":"my_device_id","prop":{"units":"degrees","value":22}}})");
+}
+
+TEST(DocumentTest, BooleanValues) {
+  auto tree = stack_json(node(path("is_active"), true),  //
+                         node(path("has_errors"), false));
+
+  StackBuffer<128> buffer;
+  tree.emit(buffer);
+
+  EXPECT_EQ(buffer.view(), R"({"is_active":true,"has_errors":false})");
+}
+
+TEST(DocumentTest, NullValues) {
+  auto tree = stack_json(
+      // C++ nullptr translates perfectly to JSON null
+      node(path("pending_command"), nullptr),  //
+      node(path("calibration_data"), nullptr));
+
+  StackBuffer<128> buffer;
+  tree.emit(buffer);
+
+  EXPECT_EQ(buffer.view(), R"({"pending_command":null,"calibration_data":null})");
+}
+
+TEST(DocumentTest, MixedDeviceState) {
+  auto device = path("device");
+
+  // A realistic payload mixing all our implemented types
+  auto tree = stack_json(node(device("name"), "espuck_node_01"),  //
+                         node(device("online"), true),            //
+                         node(device("battery_level"), 98),       //
+                         node(device("signal_strength"), -55.5),  //
+                         node(device("last_error"), nullptr),
+                         node(device("features"), stack_array("touch", "ble", "wifi")));
+
+  StackBuffer<256> buffer;
+  tree.emit(buffer);
+
+  EXPECT_EQ(
+      buffer.view(),
+      R"({"device":{"name":"espuck_node_01","online":true,"battery_level":98,"signal_strength":-55.5,"last_error":null,"features":["touch","ble","wifi"]}})");
+}
