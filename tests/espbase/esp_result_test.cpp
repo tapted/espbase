@@ -130,7 +130,7 @@ TEST(EspResultTest, DefaultConstructOnOk) {
 
   // Explicit fail with a default-constructible map to ESP_FAIL.
   EspResult<std::string> badfail = EspResult<std::string>::fail(ESP_OK);
-  EXPECT_TRUE(badfail);
+  EXPECT_FALSE(badfail);
   EXPECT_EQ(badfail.error(), ESP_FAIL);
 }
 
