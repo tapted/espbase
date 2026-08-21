@@ -175,3 +175,30 @@ TEST(DocumentTest, MixedDeviceState) {
       buffer.view(),
       R"({"device":{"name":"espuck_node_01","online":true,"battery_level":98,"signal_strength":-55.5,"last_error":null,"features":["touch","ble","wifi"]}})");
 }
+
+TEST(DocumentTest, SpanArrayOptions) {
+  // Simulating your Select Entity configuration
+  const char* const raw_options[] = {"Auto", "Heat", "Cool", "Off"};
+  std::span<const char* const> options(raw_options);
+
+  auto tree = stack_json(node(path("name"), "Thermostat Mode"),  //
+                         node(path("options"), span_array(options)));
+
+  StackBuffer<256> buffer;
+  tree.emit(buffer);
+
+  EXPECT_EQ(buffer.view(), R"({"name":"Thermostat Mode","options":["Auto","Heat","Cool","Off"]})");
+}
+
+TEST(DocumentTest, SpanArrayNumbers) {
+  // Bonus: It automatically works for any type write_json_value supports!
+  int raw_temps[] = {18, 20, 22, 24};
+  std::span<int> temps(raw_temps);
+
+  auto tree = stack_json(node(path("supported_temps"), span_array(temps)));
+
+  StackBuffer<128> buffer;
+  tree.emit(buffer);
+
+  EXPECT_EQ(buffer.view(), R"({"supported_temps":[18,20,22,24]})");
+}

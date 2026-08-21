@@ -52,6 +52,7 @@ class ArrayDocument {
  public:
   explicit ArrayDocument(Elements... elems) : elements_(std::move(elems)...) {}
 
+  // TODO: return bool for write failure
   void emit_value(Buffer& buffer) {
     buffer.write("[");
     bool first = true;
@@ -69,6 +70,32 @@ class ArrayDocument {
     buffer.write("]");
   }
 };
+
+template <typename ElementT>
+class SpanArrayDocument {
+  std::span<ElementT> span_;
+
+ public:
+  explicit SpanArrayDocument(std::span<ElementT> s) : span_(s) {}
+
+  // TODO: return bool for write failure
+  void emit_value(Buffer& buffer) {
+    buffer.write("[");
+    bool first = true;
+
+    for (auto& elem : span_) {
+      if (!first) buffer.write(",");
+      write_json_value(buffer, elem);
+      first = false;
+    }
+    buffer.write("]");
+  }
+};
+
+template <typename ElementT>
+auto span_array(std::span<ElementT> s) {
+  return SpanArrayDocument<ElementT>(s);
+}
 
 template <typename... Elements>
 auto stack_array(Elements... elems) {

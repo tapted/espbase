@@ -1,8 +1,5 @@
 #pragma once
 
-#include <array>
-#include <string_view>
-
 #include "espbase/stack_json/buffer.hpp"
 #include "espbase/stack_json/path.hpp"
 #include "espbase/stack_json/value.hpp"
