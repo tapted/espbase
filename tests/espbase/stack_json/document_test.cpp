@@ -54,3 +54,28 @@ TEST(DocumentTest, NestedArrays) {
 
   EXPECT_EQ(buffer.view(), R"({"matrix":[[1,0],[0,1]]})");
 }
+
+TEST(DocumentTest, Escaping) {
+  auto tree = stack_json(node(path("text"), "Line 1\nLine 2"),       //
+                         node(path("quote"), "He said, \"Hello\""),  //
+                         node(path("path"), "C:\\temp\\file.txt"),   //
+                         node(path("tabbed"), "Col1\tCol2"));
+
+  StackBuffer<256> buffer;
+  tree.emit(buffer);
+
+  EXPECT_EQ(
+      buffer.view(),
+      R"({"text":"Line 1\nLine 2","quote":"He said, \"Hello\"","path":"C:\\temp\\file.txt","tabbed":"Col1\tCol2"})");
+}
+
+TEST(DocumentTest, EscapedKeys) {
+  auto tricky_path = path("weird\"key\nname");
+
+  auto tree = stack_json(node(tricky_path, "value"));
+
+  StackBuffer<128> buffer;
+  tree.emit(buffer);
+
+  EXPECT_EQ(buffer.view(), R"({"weird\"key\nname":"value"})");
+}

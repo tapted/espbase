@@ -35,7 +35,7 @@ class StringNode : public NodeBase {
   }
   const PathBase& path() const override { return path_; }
   void emit_value(Buffer& buffer) override {
-    buffer.write_quoted(value_view_);
+    buffer.write_escaped(value_view_);
     emitted_ = true;  // Mark complete
   }
 };

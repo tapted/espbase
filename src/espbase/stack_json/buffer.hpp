@@ -11,9 +11,7 @@ class Buffer {
  public:
   virtual ~Buffer() = default;
   virtual bool write(std::string_view str) = 0;
-
-  // Concrete helper to avoid bloat in subclasses
-  bool write_quoted(std::string_view str) { return write("\"") && write(str) && write("\""); }
+  bool write_escaped(std::string_view str);
 };
 
 template <std::size_t MaxSize>

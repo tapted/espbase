@@ -17,7 +17,7 @@ static void emit_level(Buffer& buffer, std::span<NodeBase*> nodes, const PathBas
     std::size_t c_depth = current_path.depth();
 
     // Write the key
-    buffer.write_quoted(n->path().get_element(c_depth));
+    buffer.write_escaped(n->path().get_element(c_depth));
     buffer.write(":");
 
     if (n_depth == c_depth + 1) {

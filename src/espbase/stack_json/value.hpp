@@ -17,7 +17,7 @@ template <typename T>
 void write_json_value(Buffer& buffer, T& value) {
   if constexpr (std::is_convertible_v<T, std::string_view>) {
     // Strings
-    buffer.write_quoted(std::string_view(value));
+    buffer.write_escaped(std::string_view(value));
   } else if constexpr (std::is_integral_v<T>) {
     // Integers
     char buf[32];
