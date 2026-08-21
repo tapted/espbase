@@ -17,6 +17,7 @@ enable_testing()
 
 add_executable(espbase_tests
     espbase/esp_result_test.cpp
+    espbase/stack_json/document_test.cpp
 )
 
 target_include_directories(espbase_tests PRIVATE
