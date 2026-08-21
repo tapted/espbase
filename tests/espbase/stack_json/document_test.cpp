@@ -28,9 +28,6 @@ TEST(BufferTest, CStringBehavior) {
 }
 
 TEST(DocumentTest, DeviceTree) {
-  auto device = path("device");
-  auto device_prop = path("device", "prop");  // We can build composition helpers for this
-
   auto tree = stack_json(node(path("name"), "Temperatures"),  //
                          node(path("device", "identifier"), "my_device_id"),
                          node(path("device", "prop", "units"), "degrees"),
@@ -39,6 +36,23 @@ TEST(DocumentTest, DeviceTree) {
   StackBuffer<256> buffer;
   tree.emit(buffer);
 
+  EXPECT_EQ(
+      buffer.view(),
+      R"({"name":"Temperatures","device":{"identifier":"my_device_id","prop":{"units":"degrees","value":22}}})");
+}
+
+TEST(DocumentTest, DeviceTreeSugar) {
+  auto device = path("device");
+  auto prop = device("prop");
+  auto tree = stack_json(node("name", "Temperatures"),                //
+                         node(device("identifier"), "my_device_id"),  //
+                         node(prop("units"), "degrees"),              //
+                         node(prop("value"), 22));
+
+  StackBuffer<256> buffer;
+  tree.emit(buffer);
+
+  // Same result.
   EXPECT_EQ(
       buffer.view(),
       R"({"name":"Temperatures","device":{"identifier":"my_device_id","prop":{"units":"degrees","value":22}}})");

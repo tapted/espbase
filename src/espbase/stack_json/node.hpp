@@ -42,6 +42,11 @@ auto node(PathT p, ValueT val) {
   return ValueNode<PathT, ValueT>(p, std::move(val));
 }
 
+template <typename ValueT>
+auto node(const char* root_key, ValueT val) {
+  return node(path(root_key), std::move(val));
+}
+
 template <typename PathT, typename ValueT>
 auto node_if(bool condition, PathT p, ValueT val) {
   auto n = node(p, std::move(val));
