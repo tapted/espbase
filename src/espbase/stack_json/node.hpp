@@ -11,11 +11,14 @@ namespace sjson {
 class NodeBase {
  protected:
   bool emitted_ = false;
+  bool omitted_ = false;
 
  public:
   virtual ~NodeBase() = default;
   void reset() { emitted_ = false; }
   bool is_emitted() const { return emitted_; }
+  bool is_omitted() const { return omitted_; }
+  void set_omitted(bool o) { omitted_ = o; }
 
   virtual const PathBase& path() const = 0;
   virtual void emit_value(Buffer& buffer) = 0;
@@ -64,6 +67,13 @@ auto node(PathT p, ValueT val) {
 template <typename PathT>
 auto node(PathT p, const char* val) {
   return StringNode<PathT, 32>(p, val);
+}
+
+template <typename PathT, typename ValueT>
+auto node_if(bool condition, PathT p, ValueT val) {
+  auto n = node(p, std::move(val));
+  n.set_omitted(!condition);
+  return n;
 }
 
 }  // namespace sjson

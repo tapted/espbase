@@ -152,3 +152,4 @@ TEST(DocumentTest, MixedDeviceState) {
       buffer.view(),
       R"({"device":{"name":"espuck_node_01","online":true,"battery_level":98,"signal_strength":-55.5,"last_error":null,"features":["touch","ble","wifi"]}})");
 }
+

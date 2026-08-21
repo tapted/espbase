@@ -6,7 +6,7 @@ static void emit_level(Buffer& buffer, std::span<NodeBase*> nodes, const PathBas
   bool is_first_child = true;
 
   for (auto* n : nodes) {
-    if (n->is_emitted()) continue;
+    if (n->is_emitted() || n->is_omitted()) continue;
     if (!n->path().matches_parent(current_path)) continue;
 
     if (!is_first_child) {

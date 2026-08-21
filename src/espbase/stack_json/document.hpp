@@ -9,12 +9,22 @@
 namespace sjson {
 
 bool emit_json_nodes(Buffer& buffer, std::span<NodeBase*> nodes);
+
 template <typename... Nodes>
 class Document {
   std::tuple<Nodes...> nodes_;
 
  public:
   explicit Document(Nodes... nodes) : nodes_(std::move(nodes)...) {}
+
+  // Extracts the pointers from the tuple into a flat array (to merge with another document)
+  void append_pointers_to(std::span<NodeBase*> dest, std::size_t& count) {
+    auto append = [&]<std::size_t... I>(std::index_sequence<I...>) {
+      // Fold expression with bounds checking
+      ((count < dest.size() ? dest[count++] = &std::get<I>(nodes_) : nullptr), ...);
+    };
+    append(std::make_index_sequence<sizeof...(Nodes)>{});
+  }
 
   void emit_value(Buffer& buffer) {
     if constexpr (sizeof...(Nodes) == 0) {
