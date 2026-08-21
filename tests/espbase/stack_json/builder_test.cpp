@@ -6,7 +6,7 @@
 using namespace sjson;
 
 TEST(BuilderTest, BasicAssembly) {
-  Builder<16> builder;
+  StackBuilder<16> builder;
 
   auto doc1 = stack_json(node(path("sensor_type"), "temperature"));
   auto doc2 = stack_json(node(path("value"), 22.5));
@@ -25,7 +25,7 @@ TEST(BuilderTest, CallStackSimulation) {
   StackBuffer<256> buffer;
 
   // Simulate the bottom layer (Device)
-  auto inject_device = [&](Buffer& buf, BuilderBase& b) {
+  auto inject_device = [&](Buffer& buf, Builder& b) {
     auto device_doc = stack_json(node(path("device", "name"), "espuck_01"),
                                  node(path("device", "manufacturer"), "espuck"));
     b.add(device_doc);
@@ -33,7 +33,7 @@ TEST(BuilderTest, CallStackSimulation) {
   };
 
   // Simulate the middle layer (Entity)
-  auto inject_entity = [&](Buffer& buf, BuilderBase& b) {
+  auto inject_entity = [&](Buffer& buf, Builder& b) {
     char local_buf[] = "sensor.my_button";  // Stack-allocated string
     auto entity_doc = stack_json(node(path("name"), "My Button"),
                                  node(path("unique_id"), (const char*)local_buf));
@@ -42,7 +42,7 @@ TEST(BuilderTest, CallStackSimulation) {
   };
 
   // Simulate the top layer (Button::get_discovery_payload)
-  Builder<32> top_builder;
+  StackBuilder<32> top_builder;
   auto top_doc =
       stack_json(node(path("command_topic"), "home/cmd"), node(path("icon"), "mdi:button"));
   top_builder.add(top_doc);
@@ -58,7 +58,7 @@ TEST(BuilderTest, CallStackSimulation) {
 
 TEST(BuilderTest, CapacityOverflowProtection) {
   // Only allocate space for 2 node pointers
-  Builder<2> builder;
+  StackBuilder<2> builder;
 
   auto doc = stack_json(node(path("first"), 1), node(path("second"), 2),
                         node(path("third"), 3)  // This should be safely ignored
@@ -74,7 +74,7 @@ TEST(BuilderTest, CapacityOverflowProtection) {
 }
 
 TEST(BuilderTest, MergedObjectPaths) {
-  Builder<16> builder;
+  StackBuilder<16> builder;
 
   // Proving that paths merge correctly even when added from different documents
   auto doc1 = stack_json(node(path("config", "retries"), 3));

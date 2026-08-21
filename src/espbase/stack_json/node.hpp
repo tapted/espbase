@@ -24,25 +24,6 @@ class NodeBase {
   virtual void emit_value(Buffer& buffer) = 0;
 };
 
-template <typename PathT, std::size_t MaxLen>
-class StringNode : public NodeBase {
-  PathT path_;
-  std::array<char, MaxLen> storage_;
-  std::string_view value_view_;
-
- public:
-  StringNode(PathT p, std::string_view val) : path_(p) {
-    std::size_t len = std::min(val.size(), MaxLen);
-    std::copy(val.begin(), val.begin() + len, storage_.begin());
-    value_view_ = std::string_view(storage_.data(), len);
-  }
-  const PathBase& path() const override { return path_; }
-  void emit_value(Buffer& buffer) override {
-    buffer.write_escaped(value_view_);
-    emitted_ = true;  // Mark complete
-  }
-};
-
 template <typename PathT, typename ValueT>
 class ValueNode : public NodeBase {
   PathT path_;
@@ -64,16 +45,16 @@ auto node(PathT p, ValueT val) {
   return ValueNode<PathT, ValueT>(p, std::move(val));
 }
 
-template <typename PathT>
-auto node(PathT p, const char* val) {
-  return StringNode<PathT, 32>(p, val);
-}
-
 template <typename PathT, typename ValueT>
 auto node_if(bool condition, PathT p, ValueT val) {
   auto n = node(p, std::move(val));
   n.set_omitted(!condition);
   return n;
+}
+
+template <typename PathT>
+auto node_if(PathT p, const char* val) {
+  return node_if(val != nullptr, p, val);
 }
 
 }  // namespace sjson

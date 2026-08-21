@@ -4,6 +4,29 @@
 
 using namespace sjson;
 
+TEST(BufferTest, CStringBehavior) {
+  // Capacity for exactly 11 data characters (allocates 12 internally)
+  StackBuffer<11> buffer;
+
+  buffer.write("hello");
+
+  // First read
+  EXPECT_STREQ(buffer.c_str(), "hello");
+  EXPECT_EQ(buffer.view().size(), 5);
+
+  // Write more data (overwriting the previous null terminator)
+  buffer.write(" world");
+
+  // Second read
+  EXPECT_STREQ(buffer.c_str(), "hello world");  // Fills buffer
+
+  // Try to exceed the MaxSize (should be rejected)
+  EXPECT_FALSE(buffer.write("d"));
+
+  // The null terminator should still be exactly at the MaxSize boundary
+  EXPECT_STREQ(buffer.c_str(), "hello world");
+}
+
 TEST(DocumentTest, DeviceTree) {
   auto device = path("device");
   auto device_prop = path("device", "prop");  // We can build composition helpers for this
@@ -152,4 +175,3 @@ TEST(DocumentTest, MixedDeviceState) {
       buffer.view(),
       R"({"device":{"name":"espuck_node_01","online":true,"battery_level":98,"signal_strength":-55.5,"last_error":null,"features":["touch","ble","wifi"]}})");
 }
-
