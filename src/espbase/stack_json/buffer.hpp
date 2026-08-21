@@ -16,7 +16,7 @@ class Buffer {
 
 template <std::size_t MaxSize>
 class StackBuffer : public Buffer {
-  std::array<char, MaxSize> buffer_;
+  std::array<char, MaxSize + 1> buffer_;  // +1 so we can null-terminate for c_str()
   std::size_t head_ = 0;
 
  public:
@@ -27,6 +27,11 @@ class StackBuffer : public Buffer {
     return true;
   }
   std::string_view view() const { return {buffer_.data(), head_}; }
+
+  const char* c_str() {
+    buffer_[head_] = '\0';
+    return buffer_.data();
+  }
 };
 
 }  // namespace sjson
