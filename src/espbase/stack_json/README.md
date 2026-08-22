@@ -295,4 +295,7 @@ Because StackJson operates entirely on the stack and refuses to allocate dynamic
 * **Full DOM Manipulation:** We will never load an arbitrary JSON tree into a mutable in-memory DOM. You cannot parse a document, alter a specific nested node, and then re-emit it.
 * **Perfect Float Round-Tripping:** To save up to 150kB of binary size (by avoiding algorithms like Ryu/Dragonbox), we fall back to `<charconv>` and `<cstdio>`. This is fast and small, but may slightly alter float string representations (e.g., `3.14` might emit as `3.1400000000000001`).
 * **Duplicate Key Detection:** If a payload contains `{"a": 1, "a": 2}`, our parser will evaluate the assignment twice, leaving your variable with the last seen value.
-* **Dynamic / Heap-Based Keys:** Creating keys at runtime using `std::string` formatting is intentionally unsupported. Keys must be resolvable to `const char*` or `string_view` (typically living in your `.rodata` segment) to guarantee predictable memory usage.
+
+### 🟡 Dynamic / Heap-Based Keys (Supported via LValues)
+
+StackJson does not allocate memory for keys, but it **can** bind to your dynamically generated keys (e.g., `std::string`). Thanks to perfect forwarding, the library safely captures a reference to your local string variables. To protect you from dangling memory, a compile-time guardrail will intentionally break the build if you attempt to bind to a temporary/rvalue string.

@@ -1,11 +1,13 @@
 #pragma once
 
 #include <array>
-#include <span>
+#include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 namespace sjson {
+
 class PathBase {
  public:
   virtual ~PathBase() = default;
@@ -26,34 +28,48 @@ class StaticPath : public PathBase {
   std::array<std::string_view, Depth> elements_;
 
  private:
-  // Helper to unpack existing elements and pass them to the new constructor
+  // Forward references safely down the chain
   template <std::size_t... I, typename... Args>
-  auto append_impl(std::index_sequence<I...>, Args... args) const {
+  auto append_impl(std::index_sequence<I...>, Args&&... args) const {
     // Creates a new StaticPath with Depth + the number of new arguments
-    return StaticPath<Depth + sizeof...(Args)>(elements_[I]..., args...);
+    return StaticPath<Depth + sizeof...(Args)>(elements_[I]..., std::forward<Args>(args)...);
   }
 
  public:
   static constexpr std::size_t static_depth = Depth;
 
-  template <typename... Args>
-  constexpr StaticPath(Args... args) : elements_{std::string_view(args)...} {
+  // Explicitly tell the compiler we want the standard copy/move operations
+  StaticPath(const StaticPath&) = default;
+  StaticPath(StaticPath&&) = default;
+  StaticPath& operator=(const StaticPath&) = default;
+  StaticPath& operator=(StaticPath&&) = default;
+
+  // The variadic constructor with a constraint to prevent hijacking the copy constructor o_O.
+  template <typename... Args, typename = std::enable_if_t<
+                                  sizeof...(Args) != 1 ||
+                                  (!std::is_same_v<std::decay_t<Args>, StaticPath<Depth>> && ...)>>
+  constexpr StaticPath(Args&&... args) : elements_{std::string_view(std::forward<Args>(args))...} {
     static_assert(sizeof...(Args) == Depth, "Depth mismatch");
+
+    // Robustness Guardrail: Block temporary std::strings from being bound!
+    static_assert((... && !(std::is_same_v<std::decay_t<Args>, std::string> &&
+                            std::is_rvalue_reference_v<Args&&>)),
+                  "StackJson: Cannot bind a path to a temporary std::string! It will dangle.");
   }
 
   std::size_t depth() const override { return Depth; }
   std::string_view get_element(std::size_t index) const override { return elements_[index]; }
 
-  // Syntactic Sugar: Extend the path
+  // Forward arguments when extending the path
   template <typename... Args>
-  auto operator()(Args... args) const {
-    return append_impl(std::make_index_sequence<Depth>{}, args...);
+  auto operator()(Args&&... args) const {
+    return append_impl(std::make_index_sequence<Depth>{}, std::forward<Args>(args)...);
   }
 };
 
 template <typename... Args>
-auto path(Args... args) {
-  return StaticPath<sizeof...(Args)>(args...);
+auto path(Args&&... args) {
+  return StaticPath<sizeof...(Args)>(std::forward<Args>(args)...);
 }
 
 // A lightweight view used during recursive traversal to represent the "open" parent

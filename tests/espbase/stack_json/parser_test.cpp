@@ -237,3 +237,22 @@ TEST(ParserTest, CommentsAndJSONC) {
   EXPECT_TRUE(parser.was_set<1>());
   EXPECT_EQ(port, 8080);
 }
+
+TEST(ParserTest, OtaManifest) {
+  std::string json = R"({
+  "dongley": {
+    "version": "46eccbf-46eccbf-r2",
+    "image": "dongley.bin"
+  }
+})";
+
+  std::string proj = "dongley";
+  std::string new_version, image;
+
+  auto project = path(proj);
+  auto parser = json_parser(bind(project("version"), new_version), bind(project("image"), image));
+  parser.parse(json);
+
+  EXPECT_STREQ(new_version.c_str(), "46eccbf-46eccbf-r2");
+  EXPECT_STREQ(image.c_str(), "dongley.bin");
+}
