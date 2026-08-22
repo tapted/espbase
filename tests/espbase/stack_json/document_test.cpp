@@ -271,7 +271,7 @@ TEST(FormatTest, PrintfCallbackEscaping) {
       node("unique_id", [&](auto& print) { print("%s_%s", config_identifier, object_id); }),
 
       // Proving the backwards escape algorithm handles chaotic data
-    node("chaotic_topic", [&](auto& print) { print("home/%s\n\"quoted\"", "state"); }),
+      node("chaotic_topic", [&](auto& print) { print("home/%s\n\"quoted\"", "state"); }),
 
       node("print_twice", [&](auto& print) {
         print("repeat %s", "me");
@@ -283,5 +283,68 @@ TEST(FormatTest, PrintfCallbackEscaping) {
 
   EXPECT_EQ(
       buffer.view(),
-      R"({"name":"Sensor","unique_id":"espuck_temp_01","chaotic_topic":"home/state\n\"quoted\"","print_twice":"repeat me and again"})");
+      R"({"name":"Sensor","unique_id":"espuck_temp_01","chaotic_topic":"home/state\n\"quoted\"","print_twice":"repeat me and again","print_twice":"repeat me and again"})");
+}
+
+TEST(NodeIfTest, RootKeyCondition) {
+  bool is_active = true;
+  bool is_hidden = false;
+
+  auto doc = stack_json(node_if(is_active, "status", "online"),  //
+                        node_if(is_hidden, "secret", "dont_show"));
+
+  StackBuffer<128> buffer;
+  doc.emit(buffer);
+
+  // Only the true condition should be emitted
+  EXPECT_EQ(buffer.view(), R"({"status":"online"})");
+}
+
+TEST(NodeIfTest, PointerNullCheck) {
+  const char* valid_device = "sensor";
+  const char* null_device = nullptr;
+
+  auto config = path("config");
+
+  auto doc = stack_json(
+      // Using the 2-arg root key overload
+      node_if("device_class", valid_device),  //
+      node_if("missing_class", null_device),
+
+      // Using the 2-arg path overload
+      node_if(config("valid_name"), valid_device),  //
+      node_if(config("missing_name"), null_device));
+
+  StackBuffer<256> buffer;
+  doc.emit(buffer);
+
+  // Both null pointers should be silently dropped!
+  // And thanks to std::move, valid_device correctly prints "sensor" instead of stack garbage
+  EXPECT_EQ(buffer.view(), R"({"device_class":"sensor","config":{"valid_name":"sensor"}})");
+}
+
+// A stress test specifically for the dangling reference trap!
+// We create a helper function that forces the const char* to be passed by value,
+// mimicking exactly what caused the bug in the first place.
+auto create_test_doc(const char* val1, const char* val2) {
+  return stack_json(node_if("key1", val1), node_if("key2", val2));
+}
+
+TEST(NodeIfTest, DanglingReferenceTrap) {
+  const char* data = "safe_data";
+
+  // Create the document using the helper
+  auto doc = create_test_doc(data, nullptr);
+
+  // Allocate some stack variables here to deliberately overwrite
+  // any dead stack frames left behind by create_test_doc
+  volatile uint32_t garbage[] = {0xDEADBEEF, 0xBADF00D, 1, 2, 3};
+  (void)garbage;
+
+  StackBuffer<128> buffer;
+  doc.emit(buffer);
+
+  // If the node_if overload hadn't used std::move(val), this would print
+  // garbage memory instead of "safe_data".
+  EXPECT_EQ(buffer.view(), R"({"key1":"safe_data"})");
 }
