@@ -213,3 +213,27 @@ TEST(ParserTest, TrailingCommasAndArrays) {
   EXPECT_TRUE(parser.was_set<1>());
   EXPECT_EQ(active, true);
 }
+
+TEST(ParserTest, CommentsAndJSONC) {
+  std::string_view json = R"(
+        {
+            // The main configuration for the device
+            "hostname": "espuck_01", /* Do not change this over OTA */
+            "port": 8080 // Webserver port
+        }
+    )";
+
+  std::string_view hostname;
+  int port = 0;
+
+  auto parser = json_parser(bind("hostname", hostname),  //
+                            bind("port", port));
+
+  parser.parse(json);
+
+  EXPECT_TRUE(parser.was_set<0>());
+  EXPECT_EQ(hostname, "espuck_01");
+
+  EXPECT_TRUE(parser.was_set<1>());
+  EXPECT_EQ(port, 8080);
+}

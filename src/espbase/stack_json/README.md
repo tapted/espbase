@@ -120,6 +120,21 @@ inject_into(buffer, builder);
 
 ```
 
+### Pretty Printing (Opt-In & Decoupled)
+
+Formatting JSON with newlines and spaces is essential for debugging, but it wastes binary size if forced. StackJson handles this via the **Decorator Pattern**. You simply wrap your buffer in a `PrettyBuffer`.
+
+Because it's completely decoupled from the generation tree, if you don't use it, the compiler's dead-code elimination (DCE) strips it out entirely!
+
+```cpp
+StackBuffer<256> raw_buffer;
+PrettyBuffer pretty(raw_buffer, 2); // 2 spaces per indent
+
+doc.emit(pretty); 
+// Emits fully formatted JSON directly into raw_buffer
+
+```
+
 ---
 
 ## 🔍 Usage Examples: Parsing
@@ -143,9 +158,28 @@ parser.parse(json);
 
 ```
 
+### Relaxed Parsing (JSONC, Comments & Commas)
+
+IoT config files are often written by humans. StackJson's parser acts like a forgiving JSON5/JSONC engine out of the box. It natively ignores trailing commas and gracefully skips `//` and `/* */` comments.
+
+```cpp
+std::string_view json = R"(
+{
+    // Configure the main port
+    "port": 8080, 
+    "history": [1, 2, 3,], /* Note the trailing commas! */
+}
+)";
+
+int port = 0;
+auto parser = json_parser(bind("port", port));
+parser.parse(json); // Succeeds effortlessly
+
+```
+
 ### Tri-State Null Tracking
 
-In IoT, distinguishing between an omitted key and an explicit `null` (clear state) is critical. StackJson handles this natively.
+In home automation, distinguishing between an omitted key and an explicit `null` (clear state) is critical. StackJson handles this natively.
 
 ```cpp
 std::string_view json = R"({"brightness": null})";
@@ -170,54 +204,37 @@ if (brightness_node.was_set()) {
 
 ### String Decoding Strategies
 
-Depending on your memory constraints, you can choose how to handle escaped strings (`\n`, `\"`):
+Depending on your memory constraints, you can choose how to handle escaped strings (like `\n`, `\"`, or `\uXXXX` sequences):
 
-1. **`std::string_view`**: Zero-copy. You get a view directly into the raw, unparsed JSON buffer (escape characters remain intact).
-2. **`std::span<char>`**: Provide your own stack buffer. StackJson decodes the string into your buffer and safely shrinks the span to the exact decoded length.
-3. **`std::string`**: The pragmatic escape hatch. StackJson will dynamically resize the heap string to perfectly fit the decoded characters with exactly one allocation.
+1. **`std::string_view`**: Zero-copy. You get a view directly into the raw, unparsed JSON buffer.
+2. **`std::span<char>`**: Provide your own stack buffer. StackJson decodes the string (including UTF-8 translation for `\u` sequences) into your buffer and safely shrinks the span to the exact decoded length.
+3. **`std::string`**: The pragmatic escape hatch. StackJson will dynamically resize the heap string to perfectly fit the decoded characters with exactly *one* allocation.
 
 ---
 
 ## 📊 Feature Support Matrix
 
-### 🟢 Fully Supported (RFC 8259 Compliant)
+### 🟢 Fully Supported
 
-* **Zero-Allocation Traversal:** Both generating and parsing operate completely without the heap.
+* **Zero-Allocation Traversal:** Generating and parsing operate completely without the heap.
 * **Compile-Time Depth Calculation:** Parser bounds checking perfectly auto-sizes to the deepest path requested.
-* **UTF-8 / Unicode:** High-byte characters (like `°C` or emojis) pass through transparently without triggering aggressive ASCII-escaping bugs.
+* **UTF-8 / Unicode Decoding:** Translates `\uXXXX` sequences into valid UTF-8 bytes natively, and passes raw high-byte characters (like `°C` or emojis) through safely.
+* **JSONC Extensions:** Natively supports single (`//`) and multi-line (`/* */`) comments.
+* **Trailing Commas:** Safely routes around trailing commas in both objects and arrays.
 * **Nested Objects & Paths:** Limitless object nesting within the boundaries of your RTOS stack.
 * **Auto Type Coercion:** Parser seamlessly converts strings to numbers/booleans and vice versa.
-You make a very fair point. When you optimize relentlessly for zero-allocation and binary size, you inherently leave some standard JSON library features on the cutting room floor.
 
-Let’s be brutally honest in the README about what we traded away to get this performance, where we slightly cheat the RFC 8259 spec, and what extensions would be genuinely useful for an ESP32 environment.
+### 🟡 On the Roadmap (TODO)
 
-Here is an expanded breakdown you can add to the README to give it that battle-tested, transparent feel.
-
----
-
-### 🟡 On the Roadmap (TODO & Extensions)
-
-* **Array Parsing:** Currently, extracting specific indices from incoming arrays (e.g., `bind(path("options", 0), target)`) requires an engine update.
-
-* **JSON5 / JSONC Support (Extensions):**
-
-  * **Comments:** Skipping `//` and `/* */` during parsing is highly desirable for IoT configuration files.
-
-  * **Unquoted Keys / Single Quotes:** Parsing relaxed JSON5 syntax would make the SAX engine much more forgiving for handwritten payloads.
-
-
+* **Index-based Array Parsing:** Currently, extracting specific indices from incoming arrays (e.g., `bind(path("options", 0), target)`) requires an engine update.
 * **NDJSON (Newline Delimited JSON):** Implementing a streaming reset so the parser can continuously evaluate a stream of back-to-back JSON objects over a serial or TCP socket.
 
 ### 🔴 Out of Scope / Infeasible (The Trade-offs)
 
-Because StackJson operates entirely on the stack and refuses to allocate dynamic memory, we cannot support the following features found in libraries like `nlohmann::json` or `ArduinoJson`:
+Because StackJson operates entirely on the stack and refuses to allocate dynamic memory, we cannot support the following features found in heavy desktop libraries:
 
-* **Unknown Key Iteration:** We cannot iterate over keys we don't know about. If you don't bind a `path("unknown_key")` at compile time, the parser completely ignores it. You cannot ask StackJson, "give me a list of all keys in this object."
-
-* **Full DOM Manipulation:** We will never load an arbitrary JSON tree into a mutable in-memory DOM. You cannot parse a document, alter a specific nested node, and then re-emit it. (Though our `operator+` document merging achieves a similar result for generation).
-
-* **Perfect Float Round-Tripping:** Desktop libraries drag in massive algorithms (like Ryu or Dragonbox, costing up to 150kB of binary size) to guarantee that parsing and re-emitting a float produces the exact same decimal representation. To save space, we fall back to `<charconv>` and `snprintf`, which are fast and small but may slightly alter float string representations (e.g., `3.14` might emit as `3.1400000000000001`).
-
-* **Duplicate Key Detection:** The JSON spec states that behavior regarding duplicate keys is "unpredictable." If a payload contains `{"a": 1, "a": 2}`, our parser will simply evaluate `assign()` twice, leaving your variable with the last seen value.
-
+* **Unknown Key Iteration:** We cannot iterate over keys we don't know about. If you don't bind a `path("unknown_key")` at compile time, the parser completely ignores it.
+* **Full DOM Manipulation:** We will never load an arbitrary JSON tree into a mutable in-memory DOM. You cannot parse a document, alter a specific nested node, and then re-emit it.
+* **Perfect Float Round-Tripping:** To save up to 150kB of binary size (by avoiding algorithms like Ryu/Dragonbox), we fall back to `<charconv>` and `<cstdio>`. This is fast and small, but may slightly alter float string representations (e.g., `3.14` might emit as `3.1400000000000001`).
+* **Duplicate Key Detection:** If a payload contains `{"a": 1, "a": 2}`, our parser will evaluate the assignment twice, leaving your variable with the last seen value.
 * **Dynamic / Heap-Based Keys:** Creating keys at runtime using `std::string` formatting is intentionally unsupported. Keys must be resolvable to `const char*` or `string_view` (typically living in your `.rodata` segment) to guarantee predictable memory usage.

@@ -120,12 +120,35 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
   std::string_view current_key;
 
   std::size_t i = 0;
-  auto skip_ws = [&]() {
-    while (i < json.size() && std::isspace(json[i])) i++;
+  auto skip_ws_and_comments = [&]() {
+    while (i < json.size()) {
+      if (std::isspace(json[i])) {
+        i++;
+      }
+      // Check for the start of a comment
+      else if (json[i] == '/' && i + 1 < json.size()) {
+        if (json[i + 1] == '/') {
+          // Single-line comment: skip until newline
+          i += 2;
+          while (i < json.size() && json[i] != '\n') i++;
+        } else if (json[i + 1] == '*') {
+          // Multi-line comment: skip until */
+          i += 2;
+          while (i + 1 < json.size() && !(json[i] == '*' && json[i + 1] == '/')) {
+            i++;
+          }
+          i += 2;  // skip the closing */
+        } else {
+          break;  // Just a random slash, break and let the parser handle/fail it
+        }
+      } else {
+        break;  // Found actual JSON content
+      }
+    }
   };
 
   while (i < json.size()) {
-    skip_ws();
+    skip_ws_and_comments();
     if (i >= json.size()) break;
 
     char c = json[i];
@@ -158,7 +181,7 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
       std::string_view str_val = json.substr(start, i - start);
       if (i < json.size()) i++;
 
-      skip_ws();
+      skip_ws_and_comments();
       if (i < json.size() && json[i] == ':') {
         current_key = str_val;
         i++;
