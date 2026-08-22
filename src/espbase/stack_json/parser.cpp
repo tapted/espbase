@@ -1,5 +1,7 @@
 #include "espbase/stack_json/parser.hpp"
 
+#include <cctype>
+
 #include "espbase/stack_json/path.hpp"
 
 namespace sjson {

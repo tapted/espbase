@@ -91,19 +91,21 @@ template <typename... Nodes>
 class Parser {
   std::tuple<Nodes...> nodes_;
 
-  // Compile-time magic: Calculate the exact max depth we need!
-  static constexpr std::size_t MaxDepth = std::max({std::size_t{1}, Nodes::static_depth...});
+  // Use remove_reference_t so we can extract static_depth whether it's a value or a reference
+  static constexpr std::size_t MaxDepth =
+      std::max({std::size_t{1}, std::remove_reference_t<Nodes>::static_depth...});
 
  public:
-  explicit Parser(Nodes... nodes) : nodes_(std::move(nodes)...) {}
+  explicit Parser(Nodes&&... nodes) : nodes_(std::forward<Nodes>(nodes)...) {}
 
   void parse(std::string_view json) {
     std::array<ParseNodeBase*, sizeof...(Nodes)> node_ptrs =
         [&]<std::size_t... I>(std::index_sequence<I...>) {
+          // If the tuple holds a reference, std::get returns it, and '&' perfectly extracts
+          // the address of your original local variable!
           return std::array<ParseNodeBase*, sizeof...(Nodes)>{&std::get<I>(nodes_)...};
         }(std::make_index_sequence<sizeof...(Nodes)>{});
 
-    // The trampoline stack allocation is now perfectly auto-sized
     std::array<std::string_view, MaxDepth> path_stack;
 
     for (auto* n : node_ptrs) n->reset();
@@ -122,8 +124,8 @@ class Parser {
 };
 
 template <typename... Nodes>
-auto json_parser(Nodes... nodes) {
-  return Parser<Nodes...>(std::move(nodes)...);
+auto json_parser(Nodes&&... nodes) {
+  return Parser<Nodes...>(std::forward<Nodes>(nodes)...);
 }
 
 // The builder function for the schema

@@ -144,20 +144,27 @@ TEST(ParserTest, ExplicitNullTracking) {
   std::string_view json1 = R"({"brightness": null})";
 
   int brightness = 100;
-  auto parser = json_parser(bind("brightness", brightness));
+  auto brightness_node = bind("brightness", brightness);
+  auto parser = json_parser(brightness_node);
 
   parser.parse(json1);
 
-  EXPECT_TRUE(parser.was_set<0>());   // Found the key
-  EXPECT_TRUE(parser.was_null<0>());  // It was explicit null
-  EXPECT_EQ(brightness, 0);           // Target reset
+  EXPECT_TRUE(parser.was_set<0>());        // Found the key
+  EXPECT_TRUE(parser.was_null<0>());       // It was explicit null
+  EXPECT_EQ(brightness, 0);                // Target reset
+  EXPECT_TRUE(brightness_node.is_null());  // Node reports null
+  EXPECT_TRUE(brightness_node.is_set());   // Node reports set (value is null)
 
   // Case 2: Key does not exist at all
   std::string_view json2 = R"({"other": "value"})";
+
+  brightness = 100;  // Reset to non-zero
 
   parser.parse(json2);
 
   EXPECT_FALSE(parser.was_set<0>());   // Key missing
   EXPECT_FALSE(parser.was_null<0>());  // Not null (key just didn't exist)
-  EXPECT_EQ(brightness, 0);            // Value remains unchanged from previous parse
+  EXPECT_EQ(brightness, 100);            // Value remains unchanged from previous parse
+  EXPECT_FALSE(brightness_node.is_null());  // Node reports not null
+  EXPECT_FALSE(brightness_node.is_set());   // Node reports not set
 }

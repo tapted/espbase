@@ -5,7 +5,7 @@
 #include "espbase/stack_json/value.hpp"
 
 namespace sjson {
-  
+
 class NodeBase {
  protected:
   bool emitted_ = false;
@@ -28,7 +28,7 @@ class ValueNode : public NodeBase {
   ValueT value_;
 
  public:
-  ValueNode(PathT p, ValueT v) : path_(p), value_(std::move(v)) {}
+  ValueNode(PathT p, ValueT&& v) : path_(p), value_(std::forward<ValueT>(v)) {}
 
   const PathBase& path() const override { return path_; }
 
@@ -39,18 +39,18 @@ class ValueNode : public NodeBase {
 };
 
 template <typename PathT, typename ValueT>
-auto node(PathT p, ValueT val) {
-  return ValueNode<PathT, ValueT>(p, std::move(val));
+auto node(PathT p, ValueT&& val) {
+  return ValueNode<PathT, ValueT>(p, std::forward<ValueT>(val));
 }
 
 template <typename ValueT>
-auto node(const char* root_key, ValueT val) {
-  return node(path(root_key), std::move(val));
+auto node(const char* root_key, ValueT&& val) {
+  return node(path(root_key), std::forward<ValueT>(val));
 }
 
 template <typename PathT, typename ValueT>
-auto node_if(bool condition, PathT p, ValueT val) {
-  auto n = node(p, std::move(val));
+auto node_if(bool condition, PathT p, ValueT&& val) {
+  auto n = node(p, std::forward<ValueT>(val));
   n.set_omitted(!condition);
   return n;
 }

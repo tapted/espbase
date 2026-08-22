@@ -15,7 +15,7 @@ class Document {
   std::tuple<Nodes...> nodes_;
 
  public:
-  explicit Document(Nodes... nodes) : nodes_(std::move(nodes)...) {}
+  explicit Document(Nodes&&... nodes) : nodes_(std::forward<Nodes>(nodes)...) {}
 
   // Extracts the pointers from the tuple into a flat array (to merge with another document)
   void append_pointers_to(std::span<NodeBase*> dest, std::size_t& count) {
@@ -50,7 +50,7 @@ class ArrayDocument {
   std::tuple<Elements...> elements_;
 
  public:
-  explicit ArrayDocument(Elements... elems) : elements_(std::move(elems)...) {}
+  explicit ArrayDocument(Elements&&... elems) : elements_(std::forward<Elements>(elems)...) {}
 
   // TODO: return bool for write failure
   void emit_value(Buffer& buffer) {
@@ -98,13 +98,13 @@ auto span_array(std::span<ElementT> s) {
 }
 
 template <typename... Elements>
-auto stack_array(Elements... elems) {
-  return ArrayDocument<Elements...>(std::move(elems)...);
+auto stack_array(Elements&&... elems) {
+  return ArrayDocument<Elements...>(std::forward<Elements>(elems)...);
 }
 
 template <typename... Nodes>
-auto stack_json(Nodes... nodes) {
-  return Document<Nodes...>(std::move(nodes)...);
+auto stack_json(Nodes&&... nodes) {
+  return Document<Nodes...>(std::forward<Nodes>(nodes)...);
 }
 
 }  // namespace sjson
