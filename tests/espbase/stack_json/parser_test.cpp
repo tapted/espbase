@@ -162,9 +162,54 @@ TEST(ParserTest, ExplicitNullTracking) {
 
   parser.parse(json2);
 
-  EXPECT_FALSE(parser.was_set<0>());   // Key missing
-  EXPECT_FALSE(parser.was_null<0>());  // Not null (key just didn't exist)
-  EXPECT_EQ(brightness, 100);            // Value remains unchanged from previous parse
+  EXPECT_FALSE(parser.was_set<0>());        // Key missing
+  EXPECT_FALSE(parser.was_null<0>());       // Not null (key just didn't exist)
+  EXPECT_EQ(brightness, 100);               // Value remains unchanged from previous parse
   EXPECT_FALSE(brightness_node.is_null());  // Node reports not null
   EXPECT_FALSE(brightness_node.is_set());   // Node reports not set
+}
+
+TEST(ParserTest, UnicodeHexDecoding) {
+  // Tests \u00B0 (Degree symbol) which encodes to 2-byte UTF-8: 0xC2 0xB0
+  // Tests \u2713 (Checkmark) which encodes to 3-byte UTF-8: 0xE2 0x9C 0x93
+  std::string_view json = R"({
+        "temp_unit": "24\u00B0C",
+        "status": "Done \u2713"
+    })";
+
+  std::string temp_unit, status;
+
+  auto parser = json_parser(bind("temp_unit", temp_unit),  //
+                            bind("status", status));
+
+  parser.parse(json);
+
+  EXPECT_EQ(temp_unit, "24°C");
+  EXPECT_EQ(status, "Done ✓");
+}
+
+TEST(ParserTest, TrailingCommasAndArrays) {
+  // This JSON is technically invalid under strict RFC 8259:
+  // 1. Trailing comma in the array
+  // 2. Trailing comma in the object
+  std::string_view json = R"({
+        "temperature": 22,
+        "history": [1, 2, 3,],
+        "active": true,
+    })";
+
+  int temperature = 0;
+  bool active = false;
+
+  auto parser = json_parser(bind("temperature", temperature),  //
+                            bind("active", active));
+
+  parser.parse(json);
+
+  // The parser successfully routes around the structural chaos
+  EXPECT_TRUE(parser.was_set<0>());
+  EXPECT_EQ(temperature, 22);
+
+  EXPECT_TRUE(parser.was_set<1>());
+  EXPECT_EQ(active, true);
 }

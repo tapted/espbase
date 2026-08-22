@@ -52,6 +52,57 @@ std::size_t decode_json_string(std::string_view input, std::span<char> out_buffe
         case 'f':
           out_buffer[out_idx++] = '\f';
           break;
+        case 'u': {
+          // Ensure we have 4 characters left to read
+          if (i + 4 < input.size()) {
+            uint16_t codepoint = 0;
+            bool valid_hex = true;
+
+            for (int j = 1; j <= 4; ++j) {
+              char hc = input[i + j];
+              codepoint <<= 4;
+              if (hc >= '0' && hc <= '9')
+                codepoint |= (hc - '0');
+              else if (hc >= 'a' && hc <= 'f')
+                codepoint |= (hc - 'a' + 10);
+              else if (hc >= 'A' && hc <= 'F')
+                codepoint |= (hc - 'A' + 10);
+              else {
+                valid_hex = false;
+                break;
+              }
+            }
+
+            if (valid_hex) {
+              i += 4;  // Consume the 4 hex chars
+
+              // 1-byte ASCII (0x0000 - 0x007F)
+              if (codepoint <= 0x7F) {
+                if (out_idx < out_buffer.size())
+                  out_buffer[out_idx++] = static_cast<char>(codepoint);
+              }
+              // 2-byte UTF-8 (0x0080 - 0x07FF)
+              else if (codepoint <= 0x07FF) {
+                if (out_idx + 1 < out_buffer.size()) {
+                  out_buffer[out_idx++] = static_cast<char>(0xC0 | ((codepoint >> 6) & 0x1F));
+                  out_buffer[out_idx++] = static_cast<char>(0x80 | (codepoint & 0x3F));
+                }
+              }
+              // 3-byte UTF-8 (0x0800 - 0xFFFF)
+              else {
+                if (out_idx + 2 < out_buffer.size()) {
+                  out_buffer[out_idx++] = static_cast<char>(0xE0 | ((codepoint >> 12) & 0x0F));
+                  out_buffer[out_idx++] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+                  out_buffer[out_idx++] = static_cast<char>(0x80 | (codepoint & 0x3F));
+                }
+              }
+              break;
+            }
+          }
+          // Fallback if invalid hex or out of bounds
+          out_buffer[out_idx++] = 'u';
+          break;
+        }
         default:
           out_buffer[out_idx++] = input[i];
           break;
@@ -92,7 +143,10 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
     } else if (c == '}') {
       if (depth > 0) depth--;
       i++;
-    } else if (c == ',') {
+    } else if (c == ',' || c == ':' || c == '[' || c == ']') {
+      // SAFE STRUCTURAL SKIP
+      // This natively absorbs trailing commas (e.g., `1, }` reads 1, skips `,`, closes `}`)
+      // It also prevents array brackets from being misidentified as primitives.
       i++;
     } else if (c == '"') {
       i++;
@@ -120,10 +174,14 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
         }
       }
     } else {
+      // Must be a primitive value (number, true, false, null)
       std::size_t start = i;
+
+      // Include '[' and ']' in the delimiter list so primitive scanning stops cleanly
       while (i < json.size() && !std::isspace(json[i]) && json[i] != ',' && json[i] != '}' &&
-             json[i] != ']')
+             json[i] != ']' && json[i] != '{' && json[i] != '[') {
         i++;
+      }
       std::string_view prim_val = json.substr(start, i - start);
 
       if (depth < path_stack.size()) {

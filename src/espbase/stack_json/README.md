@@ -199,10 +199,7 @@ Here is an expanded breakdown you can add to the README to give it that battle-t
 
 * **Array Parsing:** Currently, extracting specific indices from incoming arrays (e.g., `bind(path("options", 0), target)`) requires an engine update.
 
-* **Decoding `\uXXXX` Sequences:** Our `decode_json_string` helper perfectly unescapes basic control characters (`\n`, `\"`, `\t`), but it currently skips decoding full Unicode hex sequences into UTF-8 bytes.
 * **JSON5 / JSONC Support (Extensions):**
-
-  * **Trailing Commas:** Standard JSON strictly forbids them, but human-written configs (and Home Assistant sometimes) often leave them in. Our parser currently strictly expects a key or `]` / `}`.
 
   * **Comments:** Skipping `//` and `/* */` during parsing is highly desirable for IoT configuration files.
 
