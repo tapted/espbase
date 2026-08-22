@@ -216,3 +216,46 @@ TEST(DocumentTest, SpanArrayNumbers) {
 
   EXPECT_EQ(buffer.view(), R"({"supported_temps":[18,20,22,24]})");
 }
+
+TEST(DocumentTest, PerfectForwardingReferenceProof) {
+  int battery_level = 50;
+
+  // 1. Build the inner document.
+  // It captures 'battery_level' by reference.
+  auto device_doc = stack_json(node("name", "espuck"),  //
+                               node("battery", battery_level));
+
+  // 2. Build the outer document.
+  // It captures 'device_doc' by reference! No copies are made.
+  auto root_doc = stack_json(node("state_topic", "home/state"),  //
+                             node("device", device_doc));
+
+  // 3. Mutate the original variable AFTER the entire document tree is built
+  battery_level = 99;
+
+  StackBuffer<256> buffer;
+  root_doc.emit(buffer);
+
+  // If perfect forwarding failed (or copied), this would output 50.
+  // Because it works, the emission evaluates the live references and outputs 99!
+  EXPECT_EQ(buffer.view(),
+            R"({"state_topic":"home/state","device":{"name":"espuck","battery":99}})");
+}
+
+TEST(DocumentTest, NestedArrayForwarding) {
+  // Proving it works for arrays too
+  auto wifi_features = stack_array("b", "g", "n");
+  auto ble_features = stack_array("mesh", "beacon");
+
+  // Both arrays are captured by reference
+  auto capabilities = stack_json(node("wifi", wifi_features),  //
+                                 node("bluetooth", ble_features));
+
+  auto root = stack_json(node("capabilities", capabilities));
+
+  StackBuffer<256> buffer;
+  root.emit(buffer);
+
+  EXPECT_EQ(buffer.view(),
+            R"({"capabilities":{"wifi":["b","g","n"],"bluetooth":["mesh","beacon"]}})");
+}
