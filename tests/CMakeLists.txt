@@ -26,6 +26,7 @@ add_executable(espbase_tests
     espbase/stack_json/builder_test.cpp
     espbase/stack_json/parser_test.cpp
     espbase/stack_json/pretty_buffer_test.cpp
+    espbase/stack_json/dynamic_buffer_test.cpp
 )
 
 target_include_directories(espbase_tests PRIVATE

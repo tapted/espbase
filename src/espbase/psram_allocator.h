@@ -1,6 +1,6 @@
 #pragma once
 
-#if LV_USE_SDL
+#if defined(__x86_64__)
 #include <memory>
 
 template <typename T>
@@ -8,9 +8,8 @@ using PSRAMAllocator = std::allocator<T>;
 
 #else
 #include <cstddef>
-
-#include "esp_err.h"
-#include "esp_heap_caps.h"
+#include <esp_err.h>
+#include <esp_heap_caps.h>
 
 template <typename T>
 struct PSRAMAllocator {
@@ -47,4 +46,4 @@ template <class T, class U>
 bool operator!=(const PSRAMAllocator<T>&, const PSRAMAllocator<U>&) {
   return false;
 }
-#endif  // LV_USE_SDL
+#endif  // defined(__x86_64__)

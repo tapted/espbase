@@ -162,6 +162,36 @@ doc.emit(pretty);
 
 ```
 
+### Dynamic Buffers (Heap / PSRAM Support)
+
+When generating massive JSON documents (like Home Assistant MQTT discovery payloads) that exceed your RTOS stack limits, you can use `DynamicBuffer`. 
+
+`DynamicBuffer` implements the `OutputBuffer` interface but backs it with a dynamically growing standard library container. It is fully template-decoupled: it works out-of-the-box with `std::vector<char>`, but you can easily substitute a custom STL allocator to route memory to an ESP32's SPIRAM/PSRAM.
+
+It also automatically maintains a "watermark" capacity (`ExpandSize`, defaulting to 256 bytes) at the end of the buffer to guarantee there is always contiguous space available for your zero-copy `printf` callbacks, without causing out-of-bounds errors.
+
+```cpp
+
+// Default routes to ESP32 PSRAM using a custom STL allocator!
+DynamicBuffer<> psram_buffer;
+
+// Or use standard heap allocation...
+DynamicBuffer<std::vector<char>> heap_buffer;
+
+auto doc = stack_json(
+    node("device_class", "temperature"),
+    node("state_topic", [&](auto& print) {
+        // The buffer guarantees at least 256 bytes are ready for this expansion,
+        // automatically resizing the underlying vector if necessary.
+        print("home/sensor/%s", config.identifier); 
+    })
+);
+
+doc.emit(psram_buffer);
+
+// c_str() safely null-terminates and returns a pointer to the vector's memory
+mqtt_client.publish(psram_buffer.c_str());
+
 ---
 
 ## 🔍 Usage Examples: Parsing
