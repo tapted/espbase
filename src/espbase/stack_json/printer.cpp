@@ -9,9 +9,6 @@
 bool sjson::Printer::operator()(const char* fmt, ...) {
   if (!success_) return false;
 
-  // 1. Write opening quote
-  if (!buffer_.write("\"")) return success_ = false;
-
   std::span<char> span = buffer_.get_write_span();
   if (span.empty()) return success_ = false;
 
@@ -86,5 +83,5 @@ bool sjson::Printer::operator()(const char* fmt, ...) {
 
   // 5. Commit the final length and close the quote
   buffer_.commit(L + E);
-  return success_ = buffer_.write("\"");
+  return true;
 }

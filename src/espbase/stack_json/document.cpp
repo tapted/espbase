@@ -47,7 +47,7 @@ bool emit_json_nodes(Buffer& buffer, std::span<NodeBase*> nodes) {
     if (!emit_level(buffer, nodes, root_path)) return false;
   }
   if (!buffer.write("}")) return false;
-
+  
   return true;
 }
 

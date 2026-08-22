@@ -20,8 +20,10 @@ void write_json_value(Buffer& buffer, T& value) {
 
   if constexpr (std::is_invocable_v<T, Printer&>) {
     // inline "printf" support: `node("key", [&](auto& print) { print("%s_%s", foo, bar); })`
+    buffer.write("\"");
     Printer printer(buffer);
     value(printer);
+    buffer.write("\"");
   } else if constexpr (std::is_convertible_v<T, std::string_view>) {
     // Strings
     buffer.write_escaped(std::string_view(value));

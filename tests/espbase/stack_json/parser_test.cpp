@@ -18,8 +18,8 @@ TEST(ParserTest, LightSensorPayload) {
   // Notice we auto-convert the string "50" into the int brightness!
   auto parser = json_parser(bind("state", state),            //
                             bind("brightness", brightness),  //
-                            bind(color("r"), r),             //
                             bind(color("g"), g),             //
+                            bind(color("r"), r),             //  order doesn't matter
                             bind(color("b"), b));
 
   parser.parse(json);

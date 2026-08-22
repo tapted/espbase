@@ -122,6 +122,7 @@ auto doc = stack_json(
     // Fully supports automatic JSON escaping of your formatted output
     node("chaotic_text", [&](auto& print) {
         print("Line 1\nLine 2 with \"quotes\"");
+        print(" print again - it will get appended");
     })
 );
 

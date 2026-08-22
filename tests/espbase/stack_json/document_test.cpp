@@ -271,12 +271,17 @@ TEST(FormatTest, PrintfCallbackEscaping) {
       node("unique_id", [&](auto& print) { print("%s_%s", config_identifier, object_id); }),
 
       // Proving the backwards escape algorithm handles chaotic data
-      node("chaotic_topic", [&](auto& print) { print("home/%s\n\"quoted\"", "state"); }));
+    node("chaotic_topic", [&](auto& print) { print("home/%s\n\"quoted\"", "state"); }),
+
+      node("print_twice", [&](auto& print) {
+        print("repeat %s", "me");
+        print(" and %s", "again");
+      }));
 
   StackBuffer<256> buffer;
   doc.emit(buffer);
 
   EXPECT_EQ(
       buffer.view(),
-      R"({"name":"Sensor","unique_id":"espuck_temp_01","chaotic_topic":"home/state\n\"quoted\""})");
+      R"({"name":"Sensor","unique_id":"espuck_temp_01","chaotic_topic":"home/state\n\"quoted\"","print_twice":"repeat me and again"})");
 }
