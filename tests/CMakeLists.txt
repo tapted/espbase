@@ -20,7 +20,9 @@ add_executable(espbase_tests
     espbase/stack_json/document_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/buffer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/parser.cpp
     espbase/stack_json/builder_test.cpp
+    espbase/stack_json/parser_test.cpp
 )
 
 target_include_directories(espbase_tests PRIVATE

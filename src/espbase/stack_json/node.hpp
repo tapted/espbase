@@ -5,6 +5,7 @@
 #include "espbase/stack_json/value.hpp"
 
 namespace sjson {
+  
 class NodeBase {
  protected:
   bool emitted_ = false;

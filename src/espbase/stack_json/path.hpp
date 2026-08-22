@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <span>
 #include <string_view>
 #include <utility>
 
@@ -33,6 +34,8 @@ class StaticPath : public PathBase {
   }
 
  public:
+  static constexpr std::size_t static_depth = Depth;
+
   template <typename... Args>
   constexpr StaticPath(Args... args) : elements_{std::string_view(args)...} {
     static_assert(sizeof...(Args) == Depth, "Depth mismatch");
