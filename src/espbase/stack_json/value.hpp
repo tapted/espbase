@@ -5,6 +5,7 @@
 #include <type_traits>
 
 #include "espbase/stack_json/buffer.hpp"
+#include "espbase/stack_json/printer.hpp"
 
 namespace sjson {
 
@@ -16,7 +17,12 @@ class ArrayDocument;
 template <typename T>
 void write_json_value(Buffer& buffer, T& value) {
   using DecayedT = std::decay_t<T>;
-  if constexpr (std::is_convertible_v<T, std::string_view>) {
+
+  if constexpr (std::is_invocable_v<T, Printer&>) {
+    // inline "printf" support: `node("key", [&](auto& print) { print("%s_%s", foo, bar); })`
+    Printer printer(buffer);
+    value(printer);
+  } else if constexpr (std::is_convertible_v<T, std::string_view>) {
     // Strings
     buffer.write_escaped(std::string_view(value));
   } else if constexpr (std::is_same_v<DecayedT, bool>) {

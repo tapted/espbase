@@ -4,6 +4,12 @@
 
 namespace sjson {
 
+std::span<char> Buffer::get_write_span() {
+  return {};
+}
+void Buffer::commit(std::size_t /*count*/) {
+}
+
 bool Buffer::write_escaped(std::string_view str) {
   if (!write("\"")) return false;  // Open quote
 
@@ -11,7 +17,7 @@ bool Buffer::write_escaped(std::string_view str) {
   for (std::size_t i = 0; i < str.size(); ++i) {
     // Cast to uint8_t to prevent signed char traps with UTF-8 high bytes
     uint8_t c = static_cast<uint8_t>(str[i]);
-    
+
     // Escape only quotes, backslashes, and ASCII control chars (0x00 - 0x1F)
     // UTF-8 characters (like 0xC2) are > 0x1F and pass through safely!
     if (c == '"' || c == '\\' || c <= 0x1F) {

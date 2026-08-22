@@ -18,6 +18,8 @@ class PrettyBuffer : public Buffer {
       : dest_(dest), indent_size_(indent_size) {}
 
   bool write(std::string_view str) override;
+  std::span<char> get_write_span() override { return dest_.get_write_span(); }
+  void commit(std::size_t count) override { dest_.commit(count); }
 };
 
 }  // namespace sjson

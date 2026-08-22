@@ -22,6 +22,7 @@ add_executable(espbase_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/parser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/pretty_buffer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/printer.cpp
     espbase/stack_json/builder_test.cpp
     espbase/stack_json/parser_test.cpp
     espbase/stack_json/pretty_buffer_test.cpp

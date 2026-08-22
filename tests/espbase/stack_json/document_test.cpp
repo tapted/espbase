@@ -259,3 +259,24 @@ TEST(DocumentTest, NestedArrayForwarding) {
   EXPECT_EQ(buffer.view(),
             R"({"capabilities":{"wifi":["b","g","n"],"bluetooth":["mesh","beacon"]}})");
 }
+
+TEST(FormatTest, PrintfCallbackEscaping) {
+  const char* config_identifier = "espuck";
+  const char* object_id = "temp_01";
+
+  auto doc = stack_json(
+      node("name", "Sensor"),
+
+      // Formats exactly like printf, straight into the OutputBuffer!
+      node("unique_id", [&](auto& print) { print("%s_%s", config_identifier, object_id); }),
+
+      // Proving the backwards escape algorithm handles chaotic data
+      node("chaotic_topic", [&](auto& print) { print("home/%s\n\"quoted\"", "state"); }));
+
+  StackBuffer<256> buffer;
+  doc.emit(buffer);
+
+  EXPECT_EQ(
+      buffer.view(),
+      R"({"name":"Sensor","unique_id":"espuck_temp_01","chaotic_topic":"home/state\n\"quoted\""})");
+}

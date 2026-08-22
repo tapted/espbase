@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <span>
 #include <string_view>
 
 namespace sjson {
@@ -10,8 +11,11 @@ class Buffer {
  public:
   constexpr Buffer() = default;
   virtual ~Buffer() = default;
-  virtual bool write(std::string_view str) = 0;
   bool write_escaped(std::string_view str);
+
+  virtual bool write(std::string_view str) = 0;
+  virtual std::span<char> get_write_span();
+  virtual void commit(std::size_t count);
 };
 
 template <std::size_t MaxSize>
@@ -36,6 +40,13 @@ class StackBuffer : public Buffer {
     buffer_[head_] = '\0';
     return buffer_;
   }
+
+  std::span<char> get_write_span() override {
+    if (head_ >= MaxSize) return {};
+    return std::span<char>(buffer_ + head_, MaxSize - head_);
+  }
+
+  void commit(std::size_t count) override { head_ += count; }
 };
 
 }  // namespace sjson

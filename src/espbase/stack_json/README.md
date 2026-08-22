@@ -101,6 +101,32 @@ auto root_doc = stack_json(
 
 ```
 
+### In-Place String Formatting (Printf Callback)
+
+When generating dynamic strings like MQTT topics or unique IDs, you usually have to waste stack space on temporary buffers (`char topic_buf[128]`) and call `snprintf`.
+
+StackJson eliminates this by accepting a lambda function. It exposes a `printf`-compatible formatter that writes *directly* into the unused tail of the `OutputBuffer`. It even applies JSON escaping in-place using a highly optimized backwards-expansion algorithm—meaning zero intermediate buffers and no `std::memmove`.
+
+```cpp
+const char* device_prefix = "espuck";
+const char* sensor_type = "temperature";
+
+auto doc = stack_json(
+    node("name", "Kitchen Temp"),
+    
+    // Formats directly into the final JSON payload safely!
+    node("state_topic", [&](auto& print) {
+        print("homeassistant/sensor/%s_%s/state", device_prefix, sensor_type);
+    }),
+
+    // Fully supports automatic JSON escaping of your formatted output
+    node("chaotic_text", [&](auto& print) {
+        print("Line 1\nLine 2 with \"quotes\"");
+    })
+);
+
+```
+
 ### The Non-Templated Builder
 
 Need to pass documents across function boundaries or virtual methods? Use `StackBuilder` to escape the template matrix and merge documents safely on the stack.
