@@ -283,7 +283,7 @@ TEST(FormatTest, PrintfCallbackEscaping) {
 
   EXPECT_EQ(
       buffer.view(),
-      R"({"name":"Sensor","unique_id":"espuck_temp_01","chaotic_topic":"home/state\n\"quoted\"","print_twice":"repeat me and again","print_twice":"repeat me and again"})");
+      R"({"name":"Sensor","unique_id":"espuck_temp_01","chaotic_topic":"home/state\n\"quoted\"","print_twice":"repeat me and again"})");
 }
 
 TEST(NodeIfTest, RootKeyCondition) {
