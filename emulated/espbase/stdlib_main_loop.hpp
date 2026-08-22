@@ -36,12 +36,19 @@ class MainLoop {
 
           cmd = queue_.front();
           queue_.pop();
+          busy_ = true;
         }
 
         // Execute outside the lock so tasks can push new tasks
         if (cmd.execute) {
           cmd.execute(cmd.instance);
         }
+
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          busy_ = false;
+        }
+        cv_idle_.notify_all();
       }
     });
   }
@@ -85,13 +92,8 @@ class MainLoop {
   //   main_loop.wait_idle();
   //   REQUIRE(device.is_idle() == true);
   void wait_idle() {
-    while (true) {
-      {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (queue_.empty()) return;
-      }
-      std::this_thread::yield();
-    }
+    std::unique_lock<std::mutex> lock(mutex_);
+    cv_idle_.wait(lock, [this] { return queue_.empty() && !busy_; });
   }
 
  private:
@@ -112,7 +114,9 @@ class MainLoop {
   std::queue<AppCommand> queue_;
   std::mutex mutex_;
   std::condition_variable cv_;
+  std::condition_variable cv_idle_;
   std::thread worker_;
+  bool busy_ = false;
   bool stop_requested_ = false;
 };
 
