@@ -27,7 +27,7 @@ StackJson allows you to declaratively build JSON payloads that mirror the final 
 Paths can be defined inline or stored as variables for clean grouping.
 
 ```cpp
-#include <stack_json.hpp>
+#include "espbase/stack_json/json.hpp"
 
 using namespace sjson;
 
@@ -191,6 +191,7 @@ doc.emit(psram_buffer);
 
 // c_str() safely null-terminates and returns a pointer to the vector's memory
 mqtt_client.publish(psram_buffer.c_str());
+```
 
 ---
 

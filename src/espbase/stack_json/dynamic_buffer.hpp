@@ -23,6 +23,8 @@ class DynamicBuffer : public Buffer {
     buffer_.resize(ExpandSize);
   }
 
+  void reset() { head_ = 0; }
+
   bool write(std::string_view str) override {
     // Grow if we don't have enough room
     if (head_ + str.size() > buffer_.size()) {
