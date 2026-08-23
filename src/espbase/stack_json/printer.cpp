@@ -1,25 +1,27 @@
 #include "espbase/stack_json/printer.hpp"
 
-#include <cstdarg>
 #include <cstdio>
 #include <span>
 
 #include "espbase/stack_json/buffer.hpp"
 
-bool sjson::Printer::operator()(const char* fmt, ...) {
+namespace sjson {
+
+bool Printer::vprint(bool escaped, const char* fmt, va_list args) {
   if (!success_) return false;
 
   std::span<char> span = buffer_.get_write_span();
   if (span.empty()) return success_ = false;
 
-  // 2. Format directly into the buffer tail
-  va_list args;
-  va_start(args, fmt);
   int written = std::vsnprintf(span.data(), span.size(), fmt, args);
-  va_end(args);
 
   if (written < 0 || static_cast<std::size_t>(written) >= span.size()) {
     return success_ = false;  // Overflow or format error
+  }
+
+  if (!escaped) {
+    buffer_.commit(static_cast<std::size_t>(written));
+    return true;
   }
 
   std::size_t L = written;
@@ -85,3 +87,39 @@ bool sjson::Printer::operator()(const char* fmt, ...) {
   buffer_.commit(L + E);
   return true;
 }
+
+bool Printer::operator()(const char* fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  bool success = vprint(true, fmt, args);
+  va_end(args);
+  return success;
+}
+
+bool Printer::write_raw(const char* fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  bool success = vprint(false, fmt, args);
+  va_end(args);
+  return success;
+}
+
+bool Printer::printq(Buffer& buffer, const char* fmt, ...) {
+  Printer p(buffer);
+  va_list args;
+  va_start(args, fmt);
+  bool success = p.vprint(true, fmt, args);
+  va_end(args);
+  return success;
+}
+
+bool Printer::printx(Buffer& buffer, const char* fmt, ...) {
+  Printer p(buffer);
+  va_list args;
+  va_start(args, fmt);
+  bool success = p.vprint(false, fmt, args);
+  va_end(args);
+  return success;
+}
+
+}  // namespace sjson
