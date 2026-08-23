@@ -24,6 +24,70 @@ class DynamicPathView : public PathBase {
 };
 
 }  // namespace
+std::string_view DynamicNodeBase::next_array_token(bool& is_str) {
+  while (!iter_state_.empty() &&
+         (std::isspace(iter_state_.front()) || iter_state_.front() == ',')) {
+    iter_state_.remove_prefix(1);
+  }
+  if (iter_state_.empty() || iter_state_.front() == ']') return {};
+
+  is_str = false;
+  std::size_t end = 0;
+
+  if (iter_state_.front() == '"') {
+    is_str = true;
+    end = 1;
+    while (end < iter_state_.size()) {
+      if (iter_state_[end] == '\\') {
+        end++;
+        if (end < iter_state_.size()) end++;
+      } else if (iter_state_[end] == '"') {
+        end++;
+        break;
+      } else {
+        end++;
+      }
+    }
+  } else if (iter_state_.front() == '{' || iter_state_.front() == '[') {
+    int depth = 0;
+    for (end = 0; end < iter_state_.size(); ++end) {
+      if (iter_state_[end] == '"') {
+        end++;
+        while (end < iter_state_.size()) {
+          if (iter_state_[end] == '\\') {
+            end++;
+            if (end < iter_state_.size()) end++;
+          } else if (iter_state_[end] == '"') {
+            break;
+          } else {
+            end++;
+          }
+        }
+      } else if (iter_state_[end] == '{' || iter_state_[end] == '[') {
+        depth++;
+      } else if (iter_state_[end] == '}' || iter_state_[end] == ']') {
+        depth--;
+        if (depth == 0) {
+          end++;
+          break;
+        }
+      }
+    }
+  } else {
+    while (end < iter_state_.size() && !std::isspace(iter_state_[end]) && iter_state_[end] != ',' &&
+           iter_state_[end] != ']') {
+      end++;
+    }
+  }
+
+  std::string_view token = iter_state_.substr(0, end);
+  iter_state_.remove_prefix(end);
+
+  if (is_str && token.size() >= 2) {
+    token = token.substr(1, token.size() - 2);
+  }
+  return token;
+}
 
 std::size_t decode_json_string(std::string_view input, std::span<char> out_buffer) {
   std::size_t out_idx = 0;
@@ -118,8 +182,8 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
                       std::span<std::string_view> path_stack) {
   std::size_t depth = 0;
   std::string_view current_key;
-
   std::size_t i = 0;
+
   auto skip_ws_and_comments = [&]() {
     while (i < json.size()) {
       if (std::isspace(json[i])) {
@@ -147,6 +211,51 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
     }
   };
 
+  // Peek-ahead lambda to capture full objects/arrays for DynamicNodes
+  auto capture_structural_value = [&]() {
+    if (depth >= path_stack.size()) return;
+    DynamicPathView current_path(path_stack, depth, current_key);
+
+    bool needs_capture = false;
+    for (auto* n : nodes)
+      if (n->path().matches_parent(current_path)) {
+        needs_capture = true;
+        break;
+      }
+    if (!needs_capture) return;
+
+    std::size_t end = i;
+    int brace_depth = 0;
+    bool in_str = false;
+
+    while (end < json.size()) {
+      char ec = json[end];
+      if (in_str) {
+        if (ec == '\\')
+          end++;
+        else if (ec == '"')
+          in_str = false;
+      } else {
+        if (ec == '"')
+          in_str = true;
+        else if (ec == '{' || ec == '[')
+          brace_depth++;
+        else if (ec == '}' || ec == ']') {
+          brace_depth--;
+          if (brace_depth == 0) {
+            end++;
+            break;
+          }
+        }
+      }
+      end++;
+    }
+
+    std::string_view block = json.substr(i, end - i);
+    for (auto* n : nodes)
+      if (n->path().matches_parent(current_path)) n->assign(block, false, false);
+  };
+
   while (i < json.size()) {
     skip_ws_and_comments();
     if (i >= json.size()) break;
@@ -154,6 +263,7 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
     char c = json[i];
 
     if (c == '{') {
+      capture_structural_value();
       if (!current_key.empty()) {
         // Only store the path if we have room in our span
         if (depth < path_stack.size()) {
@@ -163,13 +273,16 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
         current_key = "";
       }
       i++;
+    } else if (c == '[') {
+      capture_structural_value();
+      current_key = "";  // Isolate array contents from parent key!
+      i++;
     } else if (c == '}') {
       if (depth > 0) depth--;
       i++;
-    } else if (c == ',' || c == ':' || c == '[' || c == ']') {
+    } else if (c == ',' || c == ':' || c == ']') {
       // SAFE STRUCTURAL SKIP
       // This natively absorbs trailing commas (e.g., `1, }` reads 1, skips `,`, closes `}`)
-      // It also prevents array brackets from being misidentified as primitives.
       i++;
     } else if (c == '"') {
       i++;
@@ -189,12 +302,12 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
         // Only evaluate bindings if we haven't exceeded our tracked path stack
         if (depth < path_stack.size()) {
           DynamicPathView current_path(path_stack, depth, current_key);
-          for (auto* n : nodes) {
+          for (auto* n : nodes)
             if (n->path().matches_parent(current_path)) {
               n->assign(str_val, true, false);
             }
-          }
         }
+        current_key = "";  // Clear key so next array element doesn't reuse it
       }
     } else {
       // Must be a primitive value (number, true, false, null)
@@ -210,12 +323,12 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
       if (depth < path_stack.size()) {
         bool is_null = (prim_val == "null");
         DynamicPathView current_path(path_stack, depth, current_key);
-        for (auto* n : nodes) {
+        for (auto* n : nodes)
           if (n->path().matches_parent(current_path)) {
             n->assign(prim_val, false, is_null);
           }
-        }
       }
+      current_key = "";  // BUGFIX
     }
   }
 }

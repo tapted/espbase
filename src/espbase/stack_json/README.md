@@ -235,9 +235,100 @@ parser.parse(json); // Succeeds effortlessly
 
 ```
 
-### Tri-State Null Tracking
+### Dynamic Nodes (Variant Parsing, Sub-Parsing & Arrays)
 
-In home automation, distinguishing between an omitted key and an explicit `null` (clear state) is critical. StackJson handles this natively.
+Sometimes you don't know exactly what type a value will be, or you want to parse an array of unknown length. By calling `bind()` with only a path (no target variable), StackJson creates a `DynamicNode`. 
+
+A `DynamicNode` captures the raw, zero-copy `std::string_view` of the matched JSON block (even full objects or arrays). You can then interrogate its state, extract its value, sub-parse it, or iterate over it.
+
+#### 1. Variant Extraction & State Tracking
+You can check if a node was present in the payload or explicitly set to `null` before deciding what to do with it.
+
+```cpp
+auto version = bind("version");
+auto image = bind("image");
+auto not_set = bind("not_set");
+
+auto parser = json_parser(version, image, not_set);
+parser.parse(R"({"version": 11, "image": "foo.bin"})");
+
+if (image.is_set() && !image.is_null()) {
+    std::string img;
+    image >> img; // Auto-coerces the captured JSON into your variable
+}
+
+int ver;
+version >> ver; // Evaluates to true and sets ver to 11
+
+std::string missing;
+not_set >> missing; // Evaluates to false; missing remains untouched
+
+```
+
+#### 2. Sub-Parsing (Nested Objects)
+
+If a JSON payload contains a complex nested object, a `DynamicNode` captures the entire block `{...}`. You can then spin up a child parser directly on that node to extract its internal fields.
+
+```cpp
+auto info = bind(path("project", "info"));
+auto parser = json_parser(info);
+
+// Captures the entire "info" object block
+parser.parse(R"({"project": {"info": {"name": "espuck", "tags": 42}}})");
+
+std::string name;
+int tags = 0;
+
+// Sub-parse the captured block
+info.parse(
+    bind("name", name),
+    bind("tags", tags)
+);
+
+```
+
+#### 3. Array Iteration
+
+`DynamicNode` natively supports array iteration. By using a `while(node >> target)` loop, it acts as a lightweight tokenizer, extracting one element at a time from the array.
+
+```cpp
+auto tags = bind("tags");
+auto parser = json_parser(tags);
+parser.parse(R"({"tags": ["wifi", "ble", "touch"]})");
+
+std::string tag;
+while (tags >> tag) {
+    // Loops 3 times, yielding "wifi", "ble", and "touch"
+}
+
+```
+
+#### 4. Object Array Iteration (Zero-Copy!)
+
+By combining array iteration with sub-parsing, you can easily parse arrays of objects without ever allocating a vector or loading the array into memory! Just stream the array elements into a `std::string_view` (which grabs the raw `{...}` text of the element), and sub-parse it.
+
+```cpp
+auto sensors = bind("sensors");
+auto parser = json_parser(sensors);
+parser.parse(R"({"sensors": [{"id": "temp", "val": 22.5}, {"id": "hum", "val": 55.0}]})");
+
+std::string_view obj_str;
+while (sensors >> obj_str) {
+    std::string id;
+    float val = 0;
+    
+    // Parse the individual array element
+    auto sub_parser = json_parser(bind("id", id), bind("val", val));
+    sub_parser.parse(obj_str);
+    
+    printf("Sensor %s: %f\n", id.c_str(), val);
+}
+
+```
+
+### Null Tracking of directly-bound nodes
+
+Distinguishing between an omitted key and an explicit `null` (clear state) for non-dynamic bindings is also possible.
 
 ```cpp
 std::string_view json = R"({"brightness": null})";
@@ -284,7 +375,6 @@ Depending on your memory constraints, you can choose how to handle escaped strin
 
 ### 🟡 On the Roadmap (TODO)
 
-* **Index-based Array Parsing:** Currently, extracting specific indices from incoming arrays (e.g., `bind(path("options", 0), target)`) requires an engine update.
 * **NDJSON (Newline Delimited JSON):** Implementing a streaming reset so the parser can continuously evaluate a stream of back-to-back JSON objects over a serial or TCP socket.
 
 ### 🔴 Out of Scope / Infeasible (The Trade-offs)

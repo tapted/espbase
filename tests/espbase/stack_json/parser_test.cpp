@@ -257,3 +257,143 @@ TEST(ParserTest, OtaManifest) {
   EXPECT_STREQ(new_version.c_str(), "46eccbf-46eccbf-r2");
   EXPECT_STREQ(image.c_str(), "dongley.bin");
 }
+
+TEST(ParserTest, DynamicNodeVariantExtraction) {
+  std::string_view json = R"({
+        "dongley": {
+            "version": "11",
+            "image": "foo.bin"
+        },
+        "empty_val": null
+    })";
+
+  auto project = path("dongley");
+  auto version = bind(project("version"));
+  auto image = bind(project("image"));
+  auto empty_val = bind("empty_val");
+  auto not_set = bind("not_set");
+
+  auto parser = json_parser(version, image, empty_val, not_set);
+  parser.parse(json);
+
+  // 1. State Tracking
+  EXPECT_TRUE(image.is_set());
+  EXPECT_FALSE(image.is_null());
+
+  EXPECT_TRUE(empty_val.is_set());
+  EXPECT_TRUE(empty_val.is_null());
+
+  EXPECT_FALSE(not_set.is_set());
+  EXPECT_FALSE(not_set.is_null());
+
+  // 2. Extraction & Auto-Coercion
+  int ver = 0;
+  EXPECT_TRUE(version >> ver);
+  EXPECT_EQ(ver, 11);
+
+  std::string img;
+  EXPECT_TRUE(image >> img);
+  EXPECT_EQ(img, "foo.bin");
+
+  // 3. Failed Extractions
+  std::string fallback = "default";
+  EXPECT_FALSE(not_set >> fallback);
+  EXPECT_EQ(fallback, "default");  // Target remains untouched if not set
+}
+
+TEST(ParserTest, DynamicNodeSubParsing) {
+  std::string_view json = R"({
+        "dongley": {
+            "info": {
+                "name": "Dongley Project",
+                "tags": 42
+            }
+        }
+    })";
+
+  auto info = bind(path("dongley", "info"));
+  auto parser = json_parser(info);
+  parser.parse(json);
+
+  EXPECT_TRUE(info.is_set());
+
+  std::string name;
+  int tags = 0;
+
+  // Spin up a sub-parser directly on the node's captured string block
+  bool parsed = info.parse(bind("name", name), bind("tags", tags));
+
+  EXPECT_TRUE(parsed);
+  EXPECT_EQ(name, "Dongley Project");
+  EXPECT_EQ(tags, 42);
+}
+
+TEST(ParserTest, DynamicNodeArrayIteration) {
+  std::string_view json = R"({
+        "tags": ["a", "b", "c"],
+        "numbers": [10, 20, 30]
+    })";
+
+  auto tags = bind("tags");
+  auto numbers = bind("numbers");
+  auto parser = json_parser(tags, numbers);
+  parser.parse(json);
+
+  // Iterate strings
+  std::vector<std::string> tag_results;
+  std::string t;
+  while (tags >> t) {
+    tag_results.push_back(t);
+  }
+  ASSERT_EQ(tag_results.size(), 3);
+  EXPECT_EQ(tag_results[0], "a");
+  EXPECT_EQ(tag_results[1], "b");
+  EXPECT_EQ(tag_results[2], "c");
+
+  // Iterate ints
+  std::vector<int> num_results;
+  int n;
+  while (numbers >> n) {
+    num_results.push_back(n);
+  }
+  ASSERT_EQ(num_results.size(), 3);
+  EXPECT_EQ(num_results[0], 10);
+  EXPECT_EQ(num_results[1], 20);
+  EXPECT_EQ(num_results[2], 30);
+}
+
+TEST(ParserTest, DynamicNodeObjectArrayIteration) {
+  std::string_view json = R"({
+        "sensors": [
+            {"id": "temp", "val": 22.5},
+            {"id": "hum", "val": 55.0}
+        ]
+    })";
+
+  auto sensors = bind("sensors");
+  auto parser = json_parser(sensors);
+  parser.parse(json);
+
+  std::vector<std::string> ids;
+  std::vector<float> vals;
+
+  // By extracting into a string_view, we grab the raw text of each array element!
+  std::string_view obj_str;
+  while (sensors >> obj_str) {
+    std::string id;
+    float val = 0;
+
+    // Sub-parse the individual array element
+    auto sub_parser = json_parser(bind("id", id), bind("val", val));
+    sub_parser.parse(obj_str);
+
+    ids.push_back(id);
+    vals.push_back(val);
+  }
+
+  ASSERT_EQ(ids.size(), 2);
+  EXPECT_EQ(ids[0], "temp");
+  EXPECT_EQ(ids[1], "hum");
+  EXPECT_FLOAT_EQ(vals[0], 22.5f);
+  EXPECT_FLOAT_EQ(vals[1], 55.0f);
+}
