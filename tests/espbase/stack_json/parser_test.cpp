@@ -249,6 +249,7 @@ TEST(ParserTest, OtaManifest) {
   std::string proj = "dongley";
   std::string new_version, image;
 
+  // auto forbidden = path(std::string("dongley"));  // Can't bind to a temporary string.
   auto project = path(proj);
   auto parser = json_parser(bind(project("version"), new_version), bind(project("image"), image));
   parser.parse(json);

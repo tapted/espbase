@@ -1,7 +1,7 @@
 #pragma once
 
 #include <array>
-#include <string>
+#include <string>  // for a static_assert..
 #include <string_view>
 #include <type_traits>
 #include <utility>
