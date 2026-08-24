@@ -27,6 +27,9 @@ class MainLoopTaskBase {
   void reset(uint32_t timeout_ms = 2000);
   void request_stop();
 
+  // Immediately pushes a step to the main_loop queue, bypassing any timer delays.
+  void notify(bool clear_stop = true);
+
   bool running() const { return running_.load(std::memory_order_relaxed); }
   bool is_stop_requested() const volatile { return stop_requested_; }
 
@@ -43,7 +46,8 @@ class MainLoopTaskBase {
   volatile bool terminate_requested_ = false;
 
   // Tracks if the logical sequence is still iterating.
-  bool sequence_active_ = false;
+  // 0 = INACTIVE. >0 = ACTIVE (Version Number).
+  std::atomic<uint32_t> sequence_version_{0};
 
   // Safety counter for UAF prevention during teardown.
   std::atomic<uint32_t> inflight_count_{0};
