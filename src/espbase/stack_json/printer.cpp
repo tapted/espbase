@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <span>
+#include <time.h>
 
 #include "espbase/stack_json/buffer.hpp"
 
@@ -124,6 +125,15 @@ size_t Printer::printx(Buffer& buffer, const char* fmt, ...) {
   size_t written = p.vprint(false, fmt, args);
   va_end(args);
   return written;
+}
+
+size_t Printer::print_utctime(Buffer& buffer, time_t time) {
+  struct tm timeinfo;
+  gmtime_r(&time, &timeinfo);
+
+  char buf[32];
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+  return buffer.write(buf);
 }
 
 }  // namespace sjson

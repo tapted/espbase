@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdarg>
+#include <ctime>
 #include <string_view>
 #include <type_traits>
 
@@ -30,6 +31,8 @@ class Printer {
   static size_t printq(Buffer& buffer, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
   // Helper to print (raw) directly into a buffer without creating a Printer object.
   static size_t printx(Buffer& buffer, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
+
+  static size_t print_utctime(Buffer& buffer, time_t time);
 
   template <typename T>
   static size_t printt(Buffer& buffer, T value) {
