@@ -10,8 +10,9 @@ std::span<char> Buffer::get_write_span() {
 void Buffer::commit(std::size_t /*count*/) {
 }
 
-bool Buffer::write_escaped(std::string_view str) {
-  if (!write("\"")) return false;  // Open quote
+size_t Buffer::write_escaped(std::string_view str) {
+  const size_t before = length();
+  if (write("\"") == 0) return 0;  // Open quote
 
   std::size_t start = 0;
   for (std::size_t i = 0; i < str.size(); ++i) {
@@ -23,7 +24,7 @@ bool Buffer::write_escaped(std::string_view str) {
     if (c == '"' || c == '\\' || c <= 0x1F) {
       // Flush the "safe" characters we've scanned so far
       if (i > start) {
-        if (!write(str.substr(start, i - start))) return false;
+        if (write(str.substr(start, i - start)) == 0) return 0;
       }
 
       // Write the appropriate escape sequence
@@ -58,16 +59,17 @@ bool Buffer::write_escaped(std::string_view str) {
           break;
       }
 
-      if (!ok) return false;
+      if (!ok) return 0;
       start = i + 1;  // Move the start pointer past the escaped character
     }
   }
 
   // Flush any remaining safe characters
   if (start < str.size()) {
-    if (!write(str.substr(start))) return false;
+    if (write(str.substr(start)) == 0) return 0;
   }
 
-  return write("\"");  // Close quote
+  if (write("\"") == 0) return 0;  // Close quote
+  return length() - before;
 }
 }  // namespace sjson

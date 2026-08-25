@@ -7,8 +7,12 @@
 
 namespace sjson {
 
-bool Printer::vprint(bool escaped, const char* fmt, va_list args) {
-  if (!success_) return false;
+size_t Printer::write(Buffer& buffer, std::string_view str) {
+  return buffer.write(str);
+}
+
+size_t Printer::vprint(bool escaped, const char* fmt, va_list args) {
+  if (!success_) return 0;
 
   std::span<char> span = buffer_.get_write_span();
   if (span.empty()) return success_ = false;
@@ -21,7 +25,7 @@ bool Printer::vprint(bool escaped, const char* fmt, va_list args) {
 
   if (!escaped) {
     buffer_.commit(static_cast<std::size_t>(written));
-    return true;
+    return static_cast<std::size_t>(written);
   }
 
   std::size_t L = written;
@@ -85,41 +89,41 @@ bool Printer::vprint(bool escaped, const char* fmt, va_list args) {
 
   // 5. Commit the final length and close the quote
   buffer_.commit(L + E);
-  return true;
+  return L + E;
 }
 
-bool Printer::operator()(const char* fmt, ...) {
+size_t Printer::operator()(const char* fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  bool success = vprint(true, fmt, args);
+  size_t written = vprint(true, fmt, args);
   va_end(args);
-  return success;
+  return written;
 }
 
-bool Printer::write_raw(const char* fmt, ...) {
+size_t Printer::write_raw(const char* fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  bool success = vprint(false, fmt, args);
+  size_t written = vprint(false, fmt, args);
   va_end(args);
-  return success;
+  return written;
 }
 
-bool Printer::printq(Buffer& buffer, const char* fmt, ...) {
+size_t Printer::printq(Buffer& buffer, const char* fmt, ...) {
   Printer p(buffer);
   va_list args;
   va_start(args, fmt);
-  bool success = p.vprint(true, fmt, args);
+  size_t written = p.vprint(true, fmt, args);
   va_end(args);
-  return success;
+  return written;
 }
 
-bool Printer::printx(Buffer& buffer, const char* fmt, ...) {
+size_t Printer::printx(Buffer& buffer, const char* fmt, ...) {
   Printer p(buffer);
   va_list args;
   va_start(args, fmt);
-  bool success = p.vprint(false, fmt, args);
+  size_t written = p.vprint(false, fmt, args);
   va_end(args);
-  return success;
+  return written;
 }
 
 }  // namespace sjson

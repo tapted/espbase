@@ -17,9 +17,11 @@ class PrettyBuffer : public Buffer {
   constexpr PrettyBuffer(Buffer& dest, uint8_t indent_size = 2)
       : dest_(dest), indent_size_(indent_size) {}
 
-  bool write(std::string_view str) override;
+  size_t write(std::string_view str) override;
   std::span<char> get_write_span() override { return dest_.get_write_span(); }
   void commit(std::size_t count) override { dest_.commit(count); }
+  char* head() override { return dest_.head(); }
+  size_t length() const override { return dest_.length(); }
 };
 
 }  // namespace sjson

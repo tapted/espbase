@@ -1,3 +1,5 @@
+#pragma once
+
 #include <algorithm>
 #include <span>
 #include <string_view>
@@ -25,7 +27,7 @@ class DynamicBuffer : public Buffer {
 
   void reset() { head_ = 0; }
 
-  bool write(std::string_view str) override {
+  size_t write(std::string_view str) override {
     // Grow if we don't have enough room
     if (head_ + str.size() > buffer_.size()) {
       buffer_.resize(head_ + str.size() + ExpandSize);
@@ -33,7 +35,7 @@ class DynamicBuffer : public Buffer {
 
     std::copy(str.begin(), str.end(), buffer_.begin() + head_);
     head_ += str.size();
-    return true;
+    return str.size();
   }
 
   std::span<char> get_write_span() override {
@@ -45,6 +47,8 @@ class DynamicBuffer : public Buffer {
   }
 
   void commit(std::size_t count) override { head_ += count; }
+  char* head() override { return buffer_.data() + head_; }
+  size_t length() const override { return head_; }
 
   std::string_view view() const { return {buffer_.data(), head_}; }
 

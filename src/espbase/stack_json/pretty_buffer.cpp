@@ -6,7 +6,8 @@ void sjson::PrettyBuffer::write_indent() {
   }
 }
 
-bool sjson::PrettyBuffer::write(std::string_view str) {
+size_t sjson::PrettyBuffer::write(std::string_view str) {
+  const size_t before = dest_.length();
   std::size_t start = 0;
 
   for (std::size_t i = 0; i < str.size(); ++i) {
@@ -28,7 +29,7 @@ bool sjson::PrettyBuffer::write(std::string_view str) {
     if (c == '{' || c == '[' || c == '}' || c == ']' || c == ',' || c == ':' || c == '"') {
       // Flush whatever non-structural characters we've accumulated so far (like numbers)
       if (i > start) {
-        if (!dest_.write(str.substr(start, i - start))) return false;
+        if (dest_.write(str.substr(start, i - start)) == 0) return 0;
       }
       start = i + 1;
 
@@ -55,7 +56,7 @@ bool sjson::PrettyBuffer::write(std::string_view str) {
 
   // Flush the remaining chunk
   if (start < str.size()) {
-    if (!dest_.write(str.substr(start))) return false;
+    if (dest_.write(str.substr(start)) == 0) return 0;
   }
-  return true;
+  return length() - before;
 }

@@ -11,11 +11,17 @@ class Buffer {
  public:
   constexpr Buffer() = default;
   virtual ~Buffer() = default;
-  bool write_escaped(std::string_view str);
+  size_t write_escaped(std::string_view str);
 
-  virtual bool write(std::string_view str) = 0;
+  std::string_view last_write(size_t written) {
+    return std::string_view(head() - written, written);
+  }
+
+  virtual size_t write(std::string_view str) = 0;
   virtual std::span<char> get_write_span();
   virtual void commit(std::size_t count);
+  virtual char* head() = 0;
+  virtual size_t length() const = 0;
 };
 
 template <std::size_t MaxSize>
@@ -28,11 +34,11 @@ class StackBuffer : public Buffer {
 
   void reset() { head_ = 0; }
 
-  bool write(std::string_view str) override {
-    if (head_ + str.size() > MaxSize) return false;
+  size_t write(std::string_view str) override {
+    if (head_ + str.size() > MaxSize) return 0;
     std::copy(str.begin(), str.end(), buffer_ + head_);
     head_ += str.size();
-    return true;
+    return str.size();
   }
   std::string_view view() const { return {buffer_, head_}; }
 
@@ -47,6 +53,8 @@ class StackBuffer : public Buffer {
   }
 
   void commit(std::size_t count) override { head_ += count; }
+  char* head() override { return buffer_ + head_; }
+  size_t length() const override { return head_; }
 };
 
 }  // namespace sjson

@@ -39,9 +39,10 @@ class Document {
     }
   }
 
-  bool emit(Buffer& buffer) {
+  size_t emit(Buffer& buffer) {
+    size_t before = buffer.length();
     emit_value(buffer);
-    return true;
+    return buffer.length() - before;
   }
 };
 
