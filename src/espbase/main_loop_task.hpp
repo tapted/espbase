@@ -64,7 +64,10 @@ class MainLoopTaskBase {
 template <typename TaskData>
 class MainLoopTask : public MainLoopTaskBase {
  public:
+  // Run one step of the main loop. Return an optional delay in milliseconds until the next step.
   using StepFunction = std::optional<uint32_t> (*)(MainLoopTask<TaskData>& task);
+  
+  // Called when the task is requested to stop. Can be used to clean up resources.
   using StopFunction = void (*)(MainLoopTask<TaskData>& task);
 
   constexpr MainLoopTask() = default;
