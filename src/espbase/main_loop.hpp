@@ -43,10 +43,14 @@ class MainLoop {
     AppCommand cmd;
     while (true) {
       if (xQueueReceive(queue_, &cmd, portMAX_DELAY)) {
+        is_in_main_loop_ = true;
         cmd.execute(cmd.instance);
+        is_in_main_loop_ = false;
       }
     }
   }
+
+  bool is_executing_this_task() { return is_in_main_loop_; }
 
  private:
   bool push_func(void (*execute)(void*), void* instance) {
@@ -68,6 +72,7 @@ class MainLoop {
   uint8_t storage_[QueueSize * sizeof(AppCommand)];
 
   QueueHandle_t queue_ = nullptr;
+  inline static thread_local bool is_in_main_loop_;
 };
 
 inline MainLoop main_loop;

@@ -25,7 +25,12 @@ class MainLoopTaskBase {
   MainLoopTaskBase& operator=(const MainLoopTaskBase&) = delete;
 
   void reset(uint32_t timeout_ms = 2000);
-  void request_stop();
+
+  // Flags that the next step should be a "stop" step, but the task will enter an odd state if a
+  // restart or notify happens before the task is stopped. Use reset() to safely stop and restart
+  // tasks, but then beware the deadlock if reset() is called from the main loop when there is a
+  // pending step.
+  void politely_request_stop();
 
   // Immediately pushes a step to the main_loop queue, bypassing any timer delays.
   void notify(bool clear_stop = true);

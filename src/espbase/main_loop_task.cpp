@@ -4,7 +4,7 @@
 
 #include "espbase/main_loop.hpp"
 
-void MainLoopTaskBase::request_stop() {
+void MainLoopTaskBase::politely_request_stop() {
   stop_requested_ = true;
   // Only intercept the timer and push a step if the sequence is actually still running
   // Check version > 0 instead of sequence_active_
