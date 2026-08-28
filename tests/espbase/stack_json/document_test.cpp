@@ -260,6 +260,31 @@ TEST(DocumentTest, NestedArrayForwarding) {
             R"({"capabilities":{"wifi":["b","g","n"],"bluetooth":["mesh","beacon"]}})");
 }
 
+TEST(DocumentTest, DoesNullCharEmitNull) {
+  // Proving that a null character in a string is emitted as a JSON null
+  const char* null_string = nullptr;
+  auto doc = stack_json(node(path("name"), "espuck"),  //
+                        node(path("value"), null_string));
+
+  StackBuffer<128> buffer;
+  doc.emit(buffer);
+
+  EXPECT_EQ(buffer.view(), R"({"name":"espuck","value":null})");
+}
+
+TEST(DocumentTest, NullPathKeyEmitsErrorString) {
+  const char* dynamic_key = nullptr;
+
+  // Simulating a scenario where a dynamically generated key is accidentally null
+  auto doc = stack_json(node(path("config", dynamic_key), "my_value"));
+
+  StackBuffer<128> buffer;
+  doc.emit(buffer);
+
+  // The document safely generates, replacing the null key with the error string
+  EXPECT_EQ(buffer.view(), R"({"config":{"null_path_error":"my_value"}})");
+}
+
 TEST(FormatTest, PrintfCallbackEscaping) {
   const char* config_identifier = "espuck";
   const char* object_id = "temp_01";

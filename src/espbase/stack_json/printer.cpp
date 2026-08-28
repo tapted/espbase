@@ -129,8 +129,11 @@ size_t Printer::printx(Buffer& buffer, const char* fmt, ...) {
 
 size_t Printer::print_utctime(Buffer& buffer, time_t time) {
   struct tm timeinfo;
-  gmtime_r(&time, &timeinfo);
-
+#if defined(_WIN32) || defined(_WIN64)
+  if (gmtime_s(&timeinfo, &time) != 0) return 0;
+#else
+  if (gmtime_r(&time, &timeinfo) == NULL) return 0;
+#endif
   char buf[32];
   strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
   return buffer.write(buf);

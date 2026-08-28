@@ -105,6 +105,9 @@ auto stack_array(Elements&&... elems) {
 
 template <typename... Nodes>
 auto stack_json(Nodes&&... nodes) {
+  static_assert((std::is_base_of_v<NodeBase, std::decay_t<Nodes>> && ...),
+                "StackJson Error: All arguments to stack_json() must be Nodes. "
+                "Ensure keys and values are using node() or node_if().");
   return Document<Nodes...>(std::forward<Nodes>(nodes)...);
 }
 

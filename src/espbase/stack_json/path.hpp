@@ -8,6 +8,21 @@
 
 namespace sjson {
 
+namespace detail {
+// Safely converts arguments to string_view, intercepting null pointers
+template <typename T>
+constexpr std::string_view safe_string_view(T&& arg) {
+  // Use remove_reference_t instead of decay_t.
+  // This ensures string literals (arrays) evaluate to false and bypass the check.
+  using BaseT = std::remove_reference_t<T>;
+
+  if constexpr (std::is_pointer_v<BaseT>) {
+    if (arg == nullptr) return "null_path_error";
+  }
+  return std::string_view(std::forward<T>(arg));
+}
+}  // namespace detail
+
 class PathBase {
  public:
   virtual ~PathBase() = default;
@@ -48,7 +63,8 @@ class StaticPath : public PathBase {
   template <typename... Args, typename = std::enable_if_t<
                                   sizeof...(Args) != 1 ||
                                   (!std::is_same_v<std::decay_t<Args>, StaticPath<Depth>> && ...)>>
-  constexpr StaticPath(Args&&... args) : elements_{std::string_view(std::forward<Args>(args))...} {
+  constexpr StaticPath(Args&&... args)
+      : elements_{detail::safe_string_view(std::forward<Args>(args))...} {
     static_assert(sizeof...(Args) == Depth, "Depth mismatch");
 
     // Robustness Guardrail: Block temporary std::strings from being bound!

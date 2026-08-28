@@ -24,7 +24,14 @@ void write_json_value(Buffer& buffer, T& value) {
     value(printer);
     buffer.write("\"");
   } else if constexpr (std::is_convertible_v<T, std::string_view>) {
-    // Strings
+    // Strings (safely intercept null pointers before they hit strlen)
+    using BaseT = std::remove_reference_t<T>;
+    if constexpr (std::is_pointer_v<BaseT>) {
+      if (value == nullptr) {
+        buffer.write("null");
+        return;
+      }
+    }
     buffer.write_escaped(std::string_view(value));
   } else if constexpr (std::is_same_v<DecayedT, bool>) {
     // Intercept bool before is_integral catches it
@@ -44,7 +51,14 @@ void write_json_value(Buffer& buffer, T& value) {
     Printer::printx(buffer, "%g", static_cast<double>(value));
   } else {
     // Nested Documents and ArrayDocuments
-    value.emit_value(buffer);
+    static_assert(
+        requires { value.emit_value(buffer); },
+        "StackJson Error: Unsupported type passed to node(). "
+        "Values must be numbers, strings, bools, lambdas, or StackJson Documents/Arrays.");
+
+    if constexpr (requires { value.emit_value(buffer); }) {
+      value.emit_value(buffer);
+    }
   }
 }
 
