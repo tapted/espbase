@@ -397,3 +397,43 @@ TEST(ParserTest, DynamicNodeObjectArrayIteration) {
   EXPECT_FLOAT_EQ(vals[0], 22.5f);
   EXPECT_FLOAT_EQ(vals[1], 55.0f);
 }
+
+TEST(ParserTest, UnknownKeyIterationCallback) {
+  std::string_view json = R"({
+      "known": 42,
+      "unknown_str": "hello",
+      "unknown_arr": [1, 2, 3]
+  })";
+
+  int known_val = 0;
+  std::vector<std::string> discovered_keys;
+  std::vector<std::string> discovered_vals;
+  std::vector<int> discovered_array_values;
+
+  // Simply drop a lambda as the very first argument!
+  auto parser = json_parser(
+      [&](const sjson::PathBase& path, sjson::DynamicNodeBase& node) {
+        // Grab the leaf key name
+        discovered_keys.push_back(std::string(path.get_element(path.depth() - 1)));
+        discovered_vals.push_back(std::string(node.raw()));
+        if (node.is_array()) {
+          int v;
+          while (node >> v) discovered_array_values.push_back(v);
+        }
+      },
+      sjson::bind("known", known_val));
+
+  parser.parse(json);
+
+  // The explicitly bound target works
+  EXPECT_EQ(known_val, 42);
+
+  // The callback caught the rest!
+  ASSERT_EQ(discovered_keys.size(), 2);
+  EXPECT_EQ(discovered_keys[0], "unknown_str");
+  EXPECT_EQ(discovered_vals[0], "hello");
+
+  EXPECT_EQ(discovered_keys[1], "unknown_arr");
+  EXPECT_EQ(discovered_vals[1], "[1, 2, 3]");
+  EXPECT_EQ(discovered_array_values, std::vector<int>({1, 2, 3}));
+}

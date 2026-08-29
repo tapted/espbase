@@ -359,6 +359,64 @@ Depending on your memory constraints, you can choose how to handle escaped strin
 2. **`std::span<char>`**: Provide your own stack buffer. StackJson decodes the string (including UTF-8 translation for `\u` sequences) into your buffer and safely shrinks the span to the exact decoded length.
 3. **`std::string`**: The pragmatic escape hatch. StackJson will dynamically resize the heap string to perfectly fit the decoded characters with exactly *one* allocation.
 
+### 🔍 Dynamic Parsing & Unknown Keys
+
+StackJson is highly optimized for strict schema binding (extracting exactly the keys you ask for), but you can also dynamically catch and inspect unmapped data. By passing a lambda as the first argument to `json_parser`, you can create a **catch-all callback** that routes any unmatched named properties into a custom handler.
+
+The callback receives the active path and a `DynamicNodeBase` object, which provides zero-overhead type identification and extraction methods.
+
+```cpp
+std::string_view json = R"({
+  "known_key": 42,
+  "dynamic_config": {"speed": 100, "mode": "auto"},
+  "tags": ["esp32", "homeassistant"]
+})";
+
+int known_val = 0;
+
+auto parser = sjson::json_parser(
+    // 1. The Catch-All Callback
+    [&](const sjson::PathBase& path, sjson::DynamicNodeBase& node) {
+        // Get the leaf key name
+        std::string key = std::string(path.get_element(path.depth() - 1));
+
+        if (node.is_null()) {
+            printf("Key '%s' is explicitly null\n", key.c_str());
+        } 
+        else if (node.is_array()) {
+            std::string item;
+            // Iterate directly through the array elements
+            while (node >> item) {
+                printf("Array '%s' contains: %s\n", key.c_str(), item.c_str());
+            }
+        } 
+        else if (node.is_object()) {
+            // Grab the raw JSON block without iterating
+            printf("Object '%s': %s\n", key.c_str(), std::string(node.raw()).c_str());
+        } 
+        else if (node.is_string()) {
+            // .as<T>() safely coerces and unescapes the value
+            printf("String '%s': %s\n", key.c_str(), node.as<std::string>().c_str());
+        } 
+        else if (node.is_boolean() || node.is_number()) {
+            printf("Primitive '%s': %s\n", key.c_str(), std::string(node.raw()).c_str());
+        }
+    },
+    // 2. Your explicit bindings follow normally
+    sjson::bind("known_key", known_val)
+);
+
+parser.parse(json);
+
+```
+
+#### `DynamicNodeBase` Capabilities:
+
+* **Type Identification:** `is_null()`, `is_string()`, `is_array()`, `is_object()`, `is_boolean()`, `is_number()`.
+* **`.raw()`**: Returns a `std::string_view` of the exact, unparsed JSON block captured from the payload.
+* **`.as<T>()`**: Quickly extracts and coerces the value into a specific type (e.g., `auto s = node.as<std::string>();`).
+* **`operator>>`**: Use `while (node >> val)` to sequentially iterate over the elements of an array.
+
 ---
 
 ## 📊 Feature Support Matrix
@@ -381,7 +439,6 @@ Depending on your memory constraints, you can choose how to handle escaped strin
 
 Because StackJson operates entirely on the stack and refuses to allocate dynamic memory, we cannot support the following features found in heavy desktop libraries:
 
-* **Unknown Key Iteration:** We cannot iterate over keys we don't know about. If you don't bind a `path("unknown_key")` at compile time, the parser completely ignores it.
 * **Full DOM Manipulation:** We will never load an arbitrary JSON tree into a mutable in-memory DOM. You cannot parse a document, alter a specific nested node, and then re-emit it.
 * **Perfect Float Round-Tripping:** To save up to 150kB of binary size (by avoiding algorithms like Ryu/Dragonbox), we fall back to `<charconv>` and `<cstdio>`. This is fast and small, but may slightly alter float string representations (e.g., `3.14` might emit as `3.1400000000000001`).
 * **Duplicate Key Detection:** If a payload contains `{"a": 1, "a": 2}`, our parser will evaluate the assignment twice, leaving your variable with the last seen value.
@@ -389,3 +446,11 @@ Because StackJson operates entirely on the stack and refuses to allocate dynamic
 ### 🟡 Dynamic / Heap-Based Keys (Supported via LValues)
 
 StackJson does not allocate memory for keys, but it **can** bind to your dynamically generated keys (e.g., `std::string`). Thanks to perfect forwarding, the library safely captures a reference to your local string variables. To protect you from dangling memory, a compile-time guardrail will intentionally break the build if you attempt to bind to a temporary/rvalue string.
+
+### 🛡️ Safety & Guardrails
+
+StackJson is designed to be highly resilient in embedded environments, prioritizing device uptime and developer experience:
+
+* **Null-Pointer Protection:** Standard `std::string_view` implementations will immediately segfault if passed a `nullptr`. StackJson intercepts runtime nulls. A null value pointer safely emits as a JSON `null`, and a null path key emits as `"null_path_error"` to keep your device alive and make debugging obvious.
+* **Human-Readable Compiler Errors:** If you forget to wrap a payload in `node()`, or if you attempt to serialize an unsupported custom object, StackJson uses C++20 concepts and `static_assert` to halt the build with a clear, plain-English explanation of exactly what went wrong.
+* **Dangling String Prevention:** The library gladly accepts dynamic `std::string` keys and values via perfect forwarding, but uses compile-time checks to explicitly reject temporary/rvalue strings that would cause use-after-free memory corruption.

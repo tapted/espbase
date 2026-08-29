@@ -24,6 +24,17 @@ class DynamicPathView : public PathBase {
 };
 
 }  // namespace
+
+void DynamicNodeBase::assign(const PathBase&, std::string_view raw_val, bool is_string,
+                             bool is_null) {
+  is_set_ = true;
+  is_null_ = is_null;
+  raw_val_ = raw_val;
+  is_string_ = is_string;
+  iter_state_ = raw_val_;
+  iter_started_ = false;
+}
+
 std::string_view DynamicNodeBase::next_array_token(bool& is_str) {
   while (!iter_state_.empty() &&
          (std::isspace(iter_state_.front()) || iter_state_.front() == ',')) {
@@ -217,12 +228,16 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
     DynamicPathView current_path(path_stack, depth, current_key);
 
     bool needs_capture = false;
-    for (auto* n : nodes)
-      if (n->path().matches_parent(current_path)) {
+    ParseNodeBase* catch_all = nullptr;
+    for (auto* n : nodes) {
+      if (n->is_catch_all()) {
+        if (!current_key.empty()) catch_all = n;
+      } else if (n->path().matches_parent(current_path)) {
         needs_capture = true;
-        break;
       }
-    if (!needs_capture) return;
+    }
+
+    if (!needs_capture && !catch_all) return;
 
     std::size_t end = i;
     int brace_depth = 0;
@@ -252,8 +267,13 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
     }
 
     std::string_view block = json.substr(i, end - i);
-    for (auto* n : nodes)
-      if (n->path().matches_parent(current_path)) n->assign(block, false, false);
+    if (needs_capture) {
+      for (auto* n : nodes)
+        if (!n->is_catch_all() && n->path().matches_parent(current_path))
+          n->assign(current_path, block, false, false);
+    } else if (catch_all) {
+      catch_all->assign(current_path, block, false, false);
+    }
   };
 
   while (i < json.size()) {
@@ -302,10 +322,19 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
         // Only evaluate bindings if we haven't exceeded our tracked path stack
         if (depth < path_stack.size()) {
           DynamicPathView current_path(path_stack, depth, current_key);
-          for (auto* n : nodes)
-            if (n->path().matches_parent(current_path)) {
-              n->assign(str_val, true, false);
+          bool matched = false;
+          ParseNodeBase* catch_all = nullptr;
+          for (auto* n : nodes) {
+            if (n->is_catch_all()) {
+              if (!current_key.empty()) catch_all = n;
+            } else if (n->path().matches_parent(current_path)) {
+              n->assign(current_path, str_val, true, false);
+              matched = true;
             }
+          }
+          if (!matched && catch_all) {
+            catch_all->assign(current_path, str_val, true, false);
+          }
         }
         current_key = "";  // Clear key so next array element doesn't reuse it
       }
@@ -323,12 +352,21 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
       if (depth < path_stack.size()) {
         bool is_null = (prim_val == "null");
         DynamicPathView current_path(path_stack, depth, current_key);
-        for (auto* n : nodes)
-          if (n->path().matches_parent(current_path)) {
-            n->assign(prim_val, false, is_null);
+        bool matched = false;
+        ParseNodeBase* catch_all = nullptr;
+        for (auto* n : nodes) {
+          if (n->is_catch_all()) {
+            if (!current_key.empty()) catch_all = n;
+          } else if (n->path().matches_parent(current_path)) {
+            n->assign(current_path, prim_val, false, is_null);
+            matched = true;
           }
+        }
+        if (!matched && catch_all) {
+          catch_all->assign(current_path, prim_val, false, is_null);
+        }
       }
-      current_key = "";  // BUGFIX
+      current_key = "";
     }
   }
 }
