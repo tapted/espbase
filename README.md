@@ -14,7 +14,7 @@ The framework abstracts low-level ESP-IDF C APIs into object-oriented C++ patter
 | :--- | :--- | :--- |
 | **Boot** | Boot protection including crash loop detection (`check_crash_loop.cpp`) and OTA rollback watchdogs (`ota_rollback_watchdog.cpp`). | `src/espbase/boot/` |
 | **Buffers** | Memory-safe ring buffers for telemetry and state tracking (`circular_history_buffer.cpp`). | `src/espbase/` |
-| **JSON** | Native JSON parsing utilities (`json.h`). | `src/espbase/` |
+| **StackJson** | Stack-Based Non-Allocating JSON Library. | [`src/espbase/stack_json`](./src/espbase/stack_json#stackjson-) |
 | **Memory** | Memory management and allocation targeted at pseudo-static RAM (`psram_allocator.h`). | `src/espbase/` |
 | **NVS** | RAII-compliant Non-Volatile Storage wrappers for flash persistence (`nvs_store.cpp`). | `src/espbase/` |
 | **Tasks** | Object-oriented FreeRTOS task management and yielding execution (`esp_task.cpp`, `yielding_task.hpp`). | `src/espbase/` |
