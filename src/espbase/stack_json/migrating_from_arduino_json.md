@@ -30,8 +30,8 @@ serializeJson(doc, buf);</pre>
       </td>
       <td>
 <pre lang="cpp">auto doc = stack_json(
-  node(path("state"), "ON"),
-  node(path("brightness"), 255)
+  node("state", "ON"),
+  node("brightness", 255)
 );
 doc.emit(buf);</pre>
       </td>
@@ -58,8 +58,20 @@ arr.add(54);</pre>
       </td>
       <td>
 <pre lang="cpp">stack_json(
-  node(path("id"), stack_array("screenie", 54, ...))
+  node("id", stack_array("screenie", 54, ...))
 );</pre>
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Dynamic Arrays</strong></td>
+      <td>
+<pre lang="cpp">std::vector&lt;int&gt; arr = {42, 54};
+JsonArray arr = doc.createNestedArray("id");
+for (auto& i: arr) arr.add(i);</pre>
+      </td>
+      <td>
+<pre lang="cpp">std::vector&lt;int&gt; arr = {42, 54};
+stack_json(node("id", span_array(arr)));</pre>
       </td>
     </tr>
     <tr>
@@ -71,8 +83,8 @@ obj["id"] = 1;</pre>
       </td>
       <td>
 <pre lang="cpp">stack_json(
-  node(path("sensors"), stack_array(
-    stack_json(node(path("id"), 1))
+  node("sensors", stack_array(
+    stack_json(node("id", 1))
   ))
 );</pre>
       </td>
@@ -86,7 +98,7 @@ obj["id"] = 1;</pre>
       </td>
       <td>
 <pre lang="cpp">stack_json(
-  node_if(has_color, path("color_mode"), "rgb")
+  node_if(has_color, "color_mode", "rgb")
 );</pre>
       </td>
     </tr>
@@ -98,9 +110,7 @@ doc["val"] = str; // Emits null</pre>
       </td>
       <td>
 <pre lang="cpp">const char* str = nullptr;
-stack_json(
-  node(path("val"), str) 
-);</pre>
+stack_json(node("val", str));</pre>
       </td>
     </tr>
     <tr>
