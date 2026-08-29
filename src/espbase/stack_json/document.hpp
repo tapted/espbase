@@ -93,6 +93,18 @@ class SpanArrayDocument {
   }
 };
 
+// Generic Container Overload (Catches std::vector, std::array, C-arrays)
+// lvalues only: StackJson doesn't call copy constructors!
+template <typename Container>
+auto span_array(Container& c) {
+  // Deduce the element type by looking at what std::data() returns
+  using ElementT = std::remove_pointer_t<decltype(std::data(c))>;
+  
+  // Construct the span directly and pass it to the document
+  return SpanArrayDocument<ElementT>(std::span<ElementT>(std::data(c), std::size(c)));
+}
+
+// Explicit Span Overload (For when you are passing a temporary std::span view)
 template <typename ElementT>
 auto span_array(std::span<ElementT> s) {
   return SpanArrayDocument<ElementT>(s);

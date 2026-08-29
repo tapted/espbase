@@ -206,9 +206,7 @@ TEST(DocumentTest, SpanArrayOptions) {
 
 TEST(DocumentTest, SpanArrayNumbers) {
   // Bonus: It automatically works for any type write_json_value supports!
-  int raw_temps[] = {18, 20, 22, 24};
-  std::span<int> temps(raw_temps);
-
+  std::vector<int> temps = {18, 20, 22, 24};
   auto tree = stack_json(node(path("supported_temps"), span_array(temps)));
 
   StackBuffer<128> buffer;

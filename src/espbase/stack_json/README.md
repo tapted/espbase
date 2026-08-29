@@ -21,7 +21,7 @@ StackJson flips the model:
 
 ## 🛠️ Usage Examples: Generation
 
-StackJson allows you to declaratively build JSON payloads that mirror the final output structure.
+StackJson allows you to declaratively build JSON payloads that mirror the final output structure. See [Migrating from ArduinoJson to StackJson](./migrating_from_arduino_json.md) for a side-by-side comparison.
 
 ### The Basics
 Paths can be defined inline or stored as variables for clean grouping.
