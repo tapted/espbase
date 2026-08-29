@@ -23,141 +23,141 @@ If you are coming from ArduinoJson, you are used to the Document Object Model (D
     <tr>
       <td><strong>Simple Object</strong></td>
       <td>
-<pre lang="cpp"><code>StaticJsonDocument&lt;128&gt; doc;
+<pre lang="cpp">StaticJsonDocument&lt;128&gt; doc;
 doc["state"] = "ON";
 doc["brightness"] = 255;
-serializeJson(doc, buf);</code></pre>
+serializeJson(doc, buf);</pre>
       </td>
       <td>
-<pre lang="cpp"><code>auto doc = stack_json(
+<pre lang="cpp">auto doc = stack_json(
   node(path("state"), "ON"),
   node(path("brightness"), 255)
 );
-doc.emit(buf);</code></pre>
+doc.emit(buf);</pre>
       </td>
     </tr>
     <tr>
       <td><strong>Nested Objects</strong></td>
       <td>
-<pre lang="cpp"><code>doc["color"]["r"] = 255;
-doc["color"]["g"] = 128;</code></pre>
+<pre lang="cpp">doc["color"]["r"] = 255;
+doc["color"]["g"] = 128;</pre>
       </td>
       <td>
-<pre lang="cpp"><code>stack_json(
+<pre lang="cpp">stack_json(
   node(path("color", "r"), 255),
   node(path("color", "g"), 128)
-);</code></pre>
+);</pre>
       </td>
     </tr>
     <tr>
       <td><strong>Arrays of Primitives</strong></td>
       <td>
-<pre lang="cpp"><code>JsonArray arr = doc.createNestedArray("id");
+<pre lang="cpp">JsonArray arr = doc.createNestedArray("id");
 arr.add("screenie");
-arr.add(54);</code></pre>
+arr.add(54);</pre>
       </td>
       <td>
-<pre lang="cpp"><code>stack_json(
+<pre lang="cpp">stack_json(
   node(path("id"), stack_array("screenie", 54, ...))
-);</code></pre>
+);</pre>
       </td>
     </tr>
     <tr>
       <td><strong>Arrays of Objects</strong></td>
       <td>
-<pre lang="cpp"><code>JsonArray arr = doc.createNestedArray("sensors");
+<pre lang="cpp">JsonArray arr = doc.createNestedArray("sensors");
 JsonObject obj = arr.createNestedObject();
-obj["id"] = 1;</code></pre>
+obj["id"] = 1;</pre>
       </td>
       <td>
-<pre lang="cpp"><code>stack_json(
+<pre lang="cpp">stack_json(
   node(path("sensors"), stack_array(
     stack_json(node(path("id"), 1))
   ))
-);</code></pre>
+);</pre>
       </td>
     </tr>
     <tr>
       <td><strong>Conditional Keys</strong><br><em>(Omit if false)</em></td>
       <td>
-<pre lang="cpp"><code>if (has_color) {
+<pre lang="cpp">if (has_color) {
   doc["color_mode"] = "rgb";
-}</code></pre>
+}</pre>
       </td>
       <td>
-<pre lang="cpp"><code>stack_json(
+<pre lang="cpp">stack_json(
   node_if(has_color, path("color_mode"), "rgb")
-);</code></pre>
+);</pre>
       </td>
     </tr>
     <tr>
       <td><strong>Safe Null Pointers</strong></td>
       <td>
-<pre lang="cpp"><code>const char* str = nullptr;
-doc["val"] = str; // Emits null</code></pre>
+<pre lang="cpp">const char* str = nullptr;
+doc["val"] = str; // Emits null</pre>
       </td>
       <td>
-<pre lang="cpp"><code>const char* str = nullptr;
+<pre lang="cpp">const char* str = nullptr;
 stack_json(
   node(path("val"), str) 
-);</code></pre>
+);</pre>
       </td>
     </tr>
     <tr>
       <td><strong>Basic Parsing</strong></td>
       <td>
-<pre lang="cpp"><code>deserializeJson(doc, payload);
-int b = doc["brightness"];</code></pre>
+<pre lang="cpp">deserializeJson(doc, payload);
+int b = doc["brightness"];</pre>
       </td>
       <td>
-<pre lang="cpp"><code>int b = 0;
+<pre lang="cpp">int b = 0;
 json_parser(
   bind("brightness", b)
-).parse(payload);</code></pre>
+).parse(payload);</pre>
       </td>
     </tr>
     <tr>
       <td><strong>Nested Parsing</strong></td>
       <td>
-<pre lang="cpp"><code>deserializeJson(doc, payload);
-int r = doc["color"]["r"];</code></pre>
+<pre lang="cpp">deserializeJson(doc, payload);
+int r = doc["color"]["r"];</pre>
       </td>
       <td>
-<pre lang="cpp"><code>int r = 0;
+<pre lang="cpp">int r = 0;
 json_parser(
   bind(path("color", "r"), r)
-).parse(payload);</code></pre>
+).parse(payload);</pre>
       </td>
     </tr>
     <tr>
       <td><strong>Iterating an Array</strong><br><em>(Explicit Binding)</em></td>
       <td>
-<pre lang="cpp"><code>deserializeJson(doc, payload);
+<pre lang="cpp">deserializeJson(doc, payload);
 for (int v : doc["data"].as&lt;JsonArray&gt;()) {
   Serial.println(v);
-}</code></pre>
+}</pre>
       </td>
       <td>
-<pre lang="cpp"><code>auto arr_node = bind("data");
+<pre lang="cpp">auto arr_node = bind("data");
 json_parser(arr_node).parse(payload);
 int v;
 while (arr_node &gt;&gt; v) {
   Serial.println(v);
-}</code></pre>
+}</pre>
       </td>
     </tr>
     <tr>
       <td><strong>Checking Null / Types</strong></td>
       <td>
-<pre lang="cpp"><code>deserializeJson(doc, payload);
+<pre lang="cpp">deserializeJson(doc, payload);
 if (doc["val"].isNull()) { ... }
-if (doc["val"].is&lt;int&gt;()) { ... }</code></pre>
+if (doc["val"].is&lt;int&gt;()) { ... }</pre>
       </td>
       <td>
-<pre lang="cpp"><code>auto val = bind("val");
+<pre lang="cpp">auto val = bind("val");
 json_parser(val).parse(payload);
 if (val.is_null()) { ... }
-if (val.is_number()) { ... }</code></pre>
+if (val.is_number()) { ... }</pre>
       </td>
     </tr>
   </tbody>
