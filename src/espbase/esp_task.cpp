@@ -82,6 +82,8 @@ EspResult<void> EspTaskBase::start_internal(const TaskConfig& config, TaskFuncti
       notify(true);
       return ESP_OK;
     }
+    ESP_LOGI("EspTask", "Task '%s' is already running (task_handle=%p).", config.name,
+             task_handle_.load(std::memory_order_acquire));
     return ESP_ERR_INVALID_STATE;  // Return early, the task is active
   }
 
@@ -135,8 +137,8 @@ void EspTaskBase::terminate_from_task() {
 
   SemaphoreHandle_t j_sem = join_sem_;  // Copy the semaphore handle to the thread's stack.
   if (j_sem) xSemaphoreGive(j_sem);
-  task_handle_.store(nullptr, std::memory_order_release);  //  Allow re-use.
-  vTaskDelete(nullptr);  // Safe thread termination. Does not return.
+  task_handle_.store(nullptr);  //  Allow re-use (memory_order_release seemed to cause a bug?).
+  vTaskDelete(nullptr);         // Safe thread termination. Does not return.
   for (;;);  // Never reached, but needed to avoid "noreturn function does return" warnings.
 }
 
