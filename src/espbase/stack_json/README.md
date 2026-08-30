@@ -1,3 +1,9 @@
+---
+title: StackJson
+date: 2026-08-30
+author: "Trent Apted"
+draft: false
+---
 # StackJson 🧱
 
 **A zero-heap, zero-copy, strictly-typed C++26 JSON library for deeply constrained systems.**

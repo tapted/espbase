@@ -1,3 +1,9 @@
+---
+title: Migrating from ArduinoJson to StackJson
+date: 2026-08-30
+author: "Trent Apted"
+draft: false
+---
 ## Migrating from ArduinoJson to StackJson
 
 If you are coming from ArduinoJson, you are used to the Document Object Model (DOM) paradigm: allocating a memory pool, building a tree of variants in memory, and then serializing it (or vice versa). StackJson throws out the DOM entirely in favor of a strictly stack-based, zero-copy streaming architecture.
