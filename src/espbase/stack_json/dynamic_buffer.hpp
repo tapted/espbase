@@ -25,7 +25,10 @@ class DynamicBuffer : public Buffer {
     buffer_.resize(ExpandSize);
   }
 
-  void reset() { head_ = 0; }
+  void reset() {
+    clear_fail();
+    head_ = 0;
+  }
 
   size_t write(std::string_view str) override {
     // Grow if we don't have enough room

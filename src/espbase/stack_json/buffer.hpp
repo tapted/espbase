@@ -22,6 +22,16 @@ class Buffer {
   virtual void commit(std::size_t count);
   virtual char* head() = 0;
   virtual size_t length() const = 0;
+
+  bool bad() const { return bad_; }
+  void clear_fail() { bad_ = false; }
+  size_t fail() {
+    bad_ = true;
+    return 0;
+  }
+
+ private:
+  bool bad_ = false;
 };
 
 template <std::size_t MaxSize>
@@ -32,10 +42,13 @@ class StackBuffer : public Buffer {
  public:
   constexpr StackBuffer() = default;
 
-  void reset() { head_ = 0; }
+  void reset() {
+    clear_fail();
+    head_ = 0;
+  }
 
   size_t write(std::string_view str) override {
-    if (head_ + str.size() > MaxSize) return 0;
+    if (head_ + str.size() > MaxSize) return fail();
     std::copy(str.begin(), str.end(), buffer_ + head_);
     head_ += str.size();
     return str.size();

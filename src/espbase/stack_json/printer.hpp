@@ -12,7 +12,6 @@ class Buffer;
 // escaping for JSON strings.
 class Printer {
   Buffer& buffer_;
-  bool success_ = true;
 
   static size_t write(Buffer& buffer, std::string_view str);
   size_t vprint(bool escaped, const char* fmt, va_list args);

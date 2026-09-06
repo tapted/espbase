@@ -13,15 +13,15 @@ size_t Printer::write(Buffer& buffer, std::string_view str) {
 }
 
 size_t Printer::vprint(bool escaped, const char* fmt, va_list args) {
-  if (!success_) return 0;
+  if (buffer_.bad()) return 0;
 
   std::span<char> span = buffer_.get_write_span();
-  if (span.empty()) return success_ = false;
+  if (span.empty()) return buffer_.fail();
 
   int written = std::vsnprintf(span.data(), span.size(), fmt, args);
 
   if (written < 0 || static_cast<std::size_t>(written) >= span.size()) {
-    return success_ = false;  // Overflow or format error
+    return buffer_.fail();  // Overflow or format error
   }
 
   if (!escaped) {
@@ -44,7 +44,7 @@ size_t Printer::vprint(bool escaped, const char* fmt, va_list args) {
 
   // 4. Second pass: Backwards in-place expansion!
   if (E > 0) {
-    if (L + E > span.size()) return success_ = false;
+    if (L + E > span.size()) return buffer_.fail();
 
     std::size_t read_idx = L - 1;
     std::size_t write_idx = L + E - 1;
