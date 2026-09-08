@@ -71,8 +71,10 @@ void delayed_pm_enable(const DelayedPmEnableConfig& config) {
   // that keeps USB alive while still powering down the CPU to test sleep states. This should only
   // be used when debugging. But doesn't seem to achieve anything.
   if (config.keep_usb_alive) {
+#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C6
     // Prevent the digital/peripheral domain from powering down in sleep
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+#endif
 #if CONFIG_IDF_TARGET_ESP32S3
     esp_sleep_pd_config(ESP_PD_DOMAIN_XTAL, ESP_PD_OPTION_ON);  // Keep USB crystal oscillator alive
 #endif
