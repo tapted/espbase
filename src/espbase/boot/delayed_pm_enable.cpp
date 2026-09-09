@@ -52,7 +52,7 @@ static void delayed_pm_callback(void* /*arg*/) {
       s_state == PmState::BOOT_WINDOW_ALLOW_OVERRIDE) {
     esp_pm_config_t pm_config = {
         .max_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
-        .min_freq_mhz = 40,
+        .min_freq_mhz = CONFIG_XTAL_FREQ,
         .light_sleep_enable = true,
     };
     ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
@@ -67,6 +67,14 @@ static void delayed_pm_callback(void* /*arg*/) {
 }
 
 void delayed_pm_enable(const DelayedPmEnableConfig& config) {
+#ifndef CONFIG_PM_ENABLE
+  ESP_LOGE(TAG, "Power management is not enabled. Aborting delayed PM setup.");
+  return;
+#endif
+#ifndef CONFIG_FREERTOS_USE_TICKLESS_IDLE
+  ESP_LOGE(TAG, "Tickless idle is not enabled. Aborting delayed PM setup.");
+  return;
+#endif
   // If logging over Native USB, sleep will break the monitor connection! Provide an escape hatch
   // that keeps USB alive while still powering down the CPU to test sleep states. This should only
   // be used when debugging. But doesn't seem to achieve anything.
