@@ -8,7 +8,7 @@
 
 namespace sjson {
 
-bool emit_json_nodes(Buffer& buffer, std::span<NodeBase*> nodes);
+size_t emit_json_nodes(Buffer& buffer, std::span<NodeBase*> nodes);
 
 template <typename... Nodes>
 class Document {
@@ -26,23 +26,21 @@ class Document {
     append(std::make_index_sequence<sizeof...(Nodes)>{});
   }
 
-  void emit_value(Buffer& buffer) {
+  size_t emit_value(Buffer& buffer) {
     if constexpr (sizeof...(Nodes) == 0) {
-      buffer.write("{}");
+      return buffer.write("{}");
     } else {
       std::array<NodeBase*, sizeof...(Nodes)> node_ptrs =
           [&]<std::size_t... I>(std::index_sequence<I...>) {
             return std::array<NodeBase*, sizeof...(Nodes)>{&std::get<I>(nodes_)...};
           }(std::make_index_sequence<sizeof...(Nodes)>{});
 
-      emit_json_nodes(buffer, node_ptrs);  // The compiled tree traversal function
+      return emit_json_nodes(buffer, node_ptrs);  // The compiled tree traversal function
     }
   }
 
   size_t emit(Buffer& buffer) {
-    size_t before = buffer.length();
-    emit_value(buffer);
-    return buffer.length() - before;
+    return emit_value(buffer);
   }
 };
 

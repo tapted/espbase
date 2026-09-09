@@ -38,17 +38,18 @@ static bool emit_level(Buffer& buffer, std::span<NodeBase*> nodes, const PathBas
   return true;
 }
 
-bool emit_json_nodes(Buffer& buffer, std::span<NodeBase*> nodes) {
+size_t emit_json_nodes(Buffer& buffer, std::span<NodeBase*> nodes) {
+  size_t before = buffer.length();
   for (auto* n : nodes) n->reset();
 
-  if (!buffer.write("{")) return false;
+  if (!buffer.write("{")) return 0;
   if (!nodes.empty()) {
     PathView root_path(nodes[0]->path(), 0);  // Depth 0 represents the root
-    if (!emit_level(buffer, nodes, root_path)) return false;
+    if (!emit_level(buffer, nodes, root_path)) return 0;
   }
-  if (!buffer.write("}")) return false;
+  if (!buffer.write("}")) return 0;
 
-  return true;
+  return buffer.length() - before;
 }
 
 }  // namespace sjson

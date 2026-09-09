@@ -30,7 +30,7 @@ class Builder {
     return *this;
   }
 
-  bool emit(Buffer& buffer) const {
+  size_t emit(Buffer& buffer) const {
     // subspan(0, count_) creates a view of only the valid, populated pointers
     return emit_json_nodes(buffer, storage_.subspan(0, count_));
   }
