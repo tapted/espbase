@@ -7,10 +7,8 @@
 
 #include "espbase/circular_history_buffer.hpp"
 
-static constexpr char spa_html[] = {
-#embed "network_logger.html"
-    , '\0'  // Ensure null-termination
-};
+extern const uint8_t spa_html_br_start[] asm("_binary_network_logger_html_br_start");
+extern const uint8_t spa_html_br_end[]   asm("_binary_network_logger_html_br_end");
 
 static vprintf_like_t original_vprintf_ = nullptr;
 static constinit CircularHistoryBuffer buffer_;
@@ -59,9 +57,10 @@ static esp_err_t stream_log_handler(httpd_req_t* req) {
 
 static esp_err_t index_handler(httpd_req_t* req) {
   httpd_resp_set_type(req, "text/html");
-
-  // sizeof(spa_html) includes the null terminator, so we subtract 1
-  return httpd_resp_send(req, spa_html, sizeof(spa_html) - 1);
+  httpd_resp_set_hdr(req, "Content-Encoding", "br");
+  
+  size_t len = spa_html_br_end - spa_html_br_start;
+  return httpd_resp_send(req, reinterpret_cast<const char*>(spa_html_br_start), len);
 }
 
 void initialize_network_logger(size_t size_bytes, bool use_psram) {
