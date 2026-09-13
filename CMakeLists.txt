@@ -31,13 +31,15 @@ idf_component_register(
     EMBED_FILES "${LOGGER_GZ_OUT}"
 )
 
+# Read as text, replace %PROJECT%, encode, and compress
 add_custom_command(
     OUTPUT "${LOGGER_GZ_OUT}"
-    COMMAND python -c "import sys, gzip, shutil; f_in=open(sys.argv[1], 'rb'); f_out=gzip.open(sys.argv[2], 'wb', compresslevel=9); shutil.copyfileobj(f_in, f_out); f_in.close(); f_out.close()" "${LOGGER_HTML_SRC}" "${LOGGER_GZ_OUT}"
+    COMMAND python -c "import sys, gzip; text=open(sys.argv[1], 'r', encoding='utf-8').read().replace('%PROJECT%', sys.argv[3]); gzip.open(sys.argv[2], 'wb', compresslevel=9).write(text.encode('utf-8'))" "${LOGGER_HTML_SRC}" "${LOGGER_GZ_OUT}" "${CMAKE_PROJECT_NAME}"
     DEPENDS "${LOGGER_HTML_SRC}"
     COMMENT "Compressing network_logger.html to Gzip..."
     VERBATIM
 )
+
 add_custom_target(generate_network_logger_br DEPENDS "${LOGGER_GZ_OUT}")
 
 target_include_directories(${COMPONENT_LIB} PRIVATE "${ESPBASE_GEN_DIR}")
