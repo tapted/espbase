@@ -10,7 +10,7 @@
 #include "espbase/trampoline.hpp"
 
 struct AppCommand {
-  void* instance;
+  void* arg;
   void (*execute)(void*);
 };
 
@@ -32,11 +32,25 @@ class MainLoop {
     // void*. This guarantees the compiler applies any necessary memory offsets if T inherits from
     // ExpectedClass. Then pass the safely adjusted pointer into the erased context.
     ExpectedClass* safe_instance = static_cast<ExpectedClass*>(instance);
-    bool result = push_func(trampoline<MemFn>(), safe_instance);
-    if (!result) {
-      ESP_LOGE("MainLoop", "Failed to push command to queue. Queue may be full.");
+    return push_func(trampoline<MemFn>(), safe_instance);
+  }
+
+  bool push_func(void (*execute)(void*), void* arg = nullptr) {
+    AppCommand cmd{.arg = arg, .execute = execute};
+    bool pushed = false;
+
+    if (xPortInIsrContext()) {
+      // Safe to call from true hardware interrupts
+      BaseType_t high_task_woken = pdFALSE;
+      BaseType_t res = xQueueSendFromISR(queue_, &cmd, &high_task_woken);
+      if (high_task_woken) portYIELD_FROM_ISR();
+      pushed = res == pdTRUE;
+    } else {
+      // Standard FreeRTOS task context (including the default esp_timer task)
+      pushed = xQueueSend(queue_, &cmd, 0) == pdTRUE;
     }
-    return result;
+    if (!pushed) ESP_LOGE("MainLoop", "Failed to push command to queue. Queue may be full.");
+    return pushed;
   }
 
   void run_forever() {
@@ -44,7 +58,7 @@ class MainLoop {
     while (true) {
       if (xQueueReceive(queue_, &cmd, portMAX_DELAY)) {
         is_in_main_loop_ = true;
-        cmd.execute(cmd.instance);
+        cmd.execute(cmd.arg);
         is_in_main_loop_ = false;
       }
     }
@@ -53,21 +67,6 @@ class MainLoop {
   bool is_executing_this_task() { return is_in_main_loop_; }
 
  private:
-  bool push_func(void (*execute)(void*), void* instance) {
-    AppCommand cmd{.instance = instance, .execute = execute};
-
-    if (xPortInIsrContext()) {
-      // Safe to call from true hardware interrupts
-      BaseType_t high_task_woken = pdFALSE;
-      BaseType_t res = xQueueSendFromISR(queue_, &cmd, &high_task_woken);
-      if (high_task_woken) portYIELD_FROM_ISR();
-      return res == pdTRUE;
-    } else {
-      // Standard FreeRTOS task context (including the default esp_timer task)
-      return xQueueSend(queue_, &cmd, 0) == pdTRUE;
-    }
-  }
-
   StaticQueue_t state_;
   uint8_t storage_[QueueSize * sizeof(AppCommand)];
 

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cassert>
 #include <esp_err.h>
 #include <esp_log.h>
 #include <optional>
