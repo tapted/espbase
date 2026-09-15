@@ -1,9 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <esp_heap_caps.h>
 
 class CircularHistoryBuffer {
  public:

@@ -10,7 +10,7 @@
 
 #include "sdkconfig.h"
 
-static const char* TAG = "PM_BOOT";
+static constexpr char TAG[] = "PM_BOOT";
 
 enum class PmState {
   BOOT_WINDOW_NO_OVERRIDE,     // Timer is running

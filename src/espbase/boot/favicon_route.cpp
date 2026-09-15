@@ -167,7 +167,7 @@ static esp_err_t get_handler(httpd_req_t* req) {
 
 }  // namespace
 
-EspResult<void> install_favicon_route(httpd_handle_t server) {
+EspResult<> install_favicon_route(httpd_handle_t server) {
   httpd_uri_t favicon_uri = {
       .uri = "/favicon.ico",
       .method = HTTP_GET,

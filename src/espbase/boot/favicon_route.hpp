@@ -4,4 +4,4 @@
 
 typedef void* httpd_handle_t;
 
-EspResult<void> install_favicon_route(httpd_handle_t server);
+EspResult<> install_favicon_route(httpd_handle_t server);

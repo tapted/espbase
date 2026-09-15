@@ -8,7 +8,7 @@
 #include "espbase/circular_history_buffer.hpp"
 
 extern const uint8_t spa_html_gz_start[] asm("_binary_network_logger_html_gz_start");
-extern const uint8_t spa_html_gz_end[]   asm("_binary_network_logger_html_gz_end");
+extern const uint8_t spa_html_gz_end[] asm("_binary_network_logger_html_gz_end");
 
 static vprintf_like_t original_vprintf_ = nullptr;
 static constinit CircularHistoryBuffer buffer_;
@@ -58,7 +58,7 @@ static esp_err_t stream_log_handler(httpd_req_t* req) {
 static esp_err_t index_handler(httpd_req_t* req) {
   httpd_resp_set_type(req, "text/html");
   httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
-  
+
   size_t len = spa_html_gz_end - spa_html_gz_start;
   return httpd_resp_send(req, reinterpret_cast<const char*>(spa_html_gz_start), len);
 }

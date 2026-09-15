@@ -24,15 +24,15 @@ class YieldingTask : public EspTaskBase {
   // Note: base class destructor will call reset() a second time, but only call _it's_ definition.
   ~YieldingTask() { reset(); }
 
-  EspResult<void> start(const TaskConfig& config, TaskData* data, StepFunction step_func,
-                        StopFunction stop_func = nullptr) {
+  EspResult<> start(const TaskConfig& config, TaskData* data, StepFunction step_func,
+                    StopFunction stop_func = nullptr) {
     data_ = data;
     step_func_ = step_func;
     stop_func_ = stop_func;
     return start_internal(config, trampoline, this);
   }
 
-  EspResult<void> start(TaskData* data, StepFunction step_func, StopFunction stop_func = nullptr) {
+  EspResult<> start(TaskData* data, StepFunction step_func, StopFunction stop_func = nullptr) {
     return start(TaskConfig{}, data, step_func, stop_func);
   }
 
