@@ -18,12 +18,15 @@ typedef uint32_t nvs_handle_t;
 
 class NvsStore {
  public:
+  constexpr static size_t kMaxKeyBuf = 16;  // NVS_KEY_NAME_MAX_SIZE
+  using KeyBuf = char[kMaxKeyBuf];
+
   // Compile-time string length validation
   class Key {
    public:
     template <size_t N>
     constexpr Key(const char (&key)[N]) : key_str_(key) {
-      static_assert(N <= 16, "NVS key exceeds the strict 15 character limit!");
+      static_assert(N <= kMaxKeyBuf, "NVS key exceeds the strict 15 character limit!");
     }
     constexpr operator const char*() const { return key_str_; }
 
