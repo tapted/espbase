@@ -1,7 +1,8 @@
 #pragma once
 
-#include <cstddef>
-
+// Gives a mechanism for initialized modules to register a function to be called before entering
+// deep sleep. Set an RTC_DATA_ATTR for the next init if the module needs special treatment when
+// resuming. Threadsafe.
 class ShutdownRegistry {
  public:
   using ShutdownFn = void (*)();
@@ -11,10 +12,4 @@ class ShutdownRegistry {
 
   // Call all registered functions in reverse order
   static void shutdown_all();
-
- private:
-  static constexpr size_t MAX_FUNCTIONS = 32;  // 128 bytes total RAM
-
-  static ShutdownFn functions_[MAX_FUNCTIONS];
-  static size_t count_;
 };
