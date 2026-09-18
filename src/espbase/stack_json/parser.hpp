@@ -31,22 +31,29 @@ class ParseNodeBase {
   void reset() { is_set_ = is_null_ = false; }
 };
 
-template <typename PathT, typename TargetT>
-class BindNode : public ParseNodeBase {
-  PathT path_;
-  TargetT& target_;  // Reference to the user's variable on the stack.
+template <typename TargetT>
+class ParseNodeBaseT : public ParseNodeBase {
+  TargetT& target_;
+
  public:
-  static constexpr std::size_t static_depth = PathT::static_depth;
-
-  BindNode(PathT p, TargetT& t) : path_(p), target_(t) {}
-
-  const PathBase& path() const override { return path_; }
+  explicit constexpr ParseNodeBaseT(TargetT& target) : target_(target) {}
 
   void assign(const PathBase&, std::string_view raw_val, bool, bool is_null) override {
     is_set_ = true;
     is_null_ = is_null;
     coerce_value(raw_val, is_null, target_);
   }
+};
+
+template <typename PathT, typename TargetT>
+class BindNode : public ParseNodeBaseT<TargetT> {
+  PathT path_;
+
+ public:
+  static constexpr std::size_t static_depth = PathT::static_depth;
+
+  explicit constexpr BindNode(PathT p, TargetT& t) : ParseNodeBaseT<TargetT>(t), path_(p) {}
+  const PathBase& path() const override { return path_; }
 };
 
 class DynamicNodeBase : public ParseNodeBase {
@@ -121,9 +128,11 @@ class UnknownBindNodeBase : public DynamicNodeBase {
 
 template <typename Callback>
 class UnknownBindNode : public UnknownBindNodeBase {
+  // Could this use std::function_ref once esp-idf supports it? (needs gcc 16).
   Callback cb_;
+
  public:
-  UnknownBindNode(Callback cb) : cb_(std::move(cb)) {}
+  explicit constexpr UnknownBindNode(Callback cb) : cb_(std::move(cb)) {}
   void assign(const PathBase& actual_path, std::string_view raw_val, bool is_string,
               bool is_null) override {
     DynamicNodeBase::assign(actual_path, raw_val, is_string, is_null);
