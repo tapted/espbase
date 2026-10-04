@@ -114,5 +114,5 @@ void delayed_pm_enable(const DelayedPmEnableConfig& config) {
   };
 
   ESP_ERROR_CHECK(esp_timer_create(&timer_args, &s_timer_handle));
-  ESP_ERROR_CHECK(esp_timer_start_once(s_timer_handle, 3000000));
+  ESP_ERROR_CHECK(esp_timer_start_once(s_timer_handle, config.boot_window_ms * 1000ULL));
 }

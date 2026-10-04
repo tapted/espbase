@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cstdint>
+
 struct DelayedPmEnableConfig {
+  uint32_t boot_window_ms = 3000;
   bool keep_usb_alive = false;
   bool disable_sleep_on_gpio0_press = true;
   bool allow_override_after_boot_window = false;
