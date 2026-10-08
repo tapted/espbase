@@ -24,25 +24,37 @@ constexpr std::string_view safe_string_view(T&& arg) {
 }  // namespace detail
 
 class PathBase {
+ protected:
+  const std::string_view* data_ = nullptr;
+  std::size_t size_ = 0;
+
  public:
-  virtual ~PathBase() = default;
-  virtual std::size_t depth() const = 0;
-  virtual std::string_view get_element(std::size_t index) const = 0;
+  constexpr PathBase() = default;
+  constexpr PathBase(const std::string_view* data, std::size_t size) : data_(data), size_(size) {}
+
+  constexpr std::size_t depth() const { return size_; }
+  constexpr std::string_view get_element(std::size_t index) const { return data_[index]; }
+  constexpr const std::string_view* data() const { return data_; }
 
   bool matches_parent(const PathBase& parent) const {
-    if (depth() < parent.depth()) return false;
-    for (std::size_t i = 0; i < parent.depth(); ++i) {
-      if (get_element(i) != parent.get_element(i)) return false;
+    if (size_ < parent.size_) return false;
+    for (std::size_t i = 0; i < parent.size_; ++i) {
+      if (data_[i] != parent.data_[i]) return false;
     }
     return true;
   }
 };
 
 template <std::size_t Depth>
-class StaticPath : public PathBase {
-  std::array<std::string_view, Depth> elements_;
+struct StaticPathStorage {
+  std::array<std::string_view, Depth> elements_{};
+};
 
+template <std::size_t Depth>
+class StaticPath : private StaticPathStorage<Depth>, public PathBase {
  private:
+  using Storage = StaticPathStorage<Depth>;
+  using Storage::elements_;
   // Forward references safely down the chain
   template <std::size_t... I, typename... Args>
   auto append_impl(std::index_sequence<I...>, Args&&... args) const {
@@ -53,18 +65,30 @@ class StaticPath : public PathBase {
  public:
   static constexpr std::size_t static_depth = Depth;
 
-  // Explicitly tell the compiler we want the standard copy/move operations
-  StaticPath(const StaticPath&) = default;
-  StaticPath(StaticPath&&) = default;
-  StaticPath& operator=(const StaticPath&) = default;
-  StaticPath& operator=(StaticPath&&) = default;
+  // Standard copy/move operations updating data_ pointer to local elements_
+  StaticPath(const StaticPath& other) : Storage(other), PathBase(this->elements_.data(), Depth) {}
+  StaticPath(StaticPath&& other)
+      : Storage(std::move(other)), PathBase(this->elements_.data(), Depth) {}
+  StaticPath& operator=(const StaticPath& other) {
+    if (this != &other) {
+      elements_ = other.elements_;
+    }
+    return *this;
+  }
+  StaticPath& operator=(StaticPath&& other) {
+    if (this != &other) {
+      elements_ = std::move(other.elements_);
+    }
+    return *this;
+  }
 
-  // The variadic constructor with a constraint to prevent hijacking the copy constructor o_O.
+  // The variadic constructor with a constraint to prevent hijacking the copy constructor.
   template <typename... Args, typename = std::enable_if_t<
                                   sizeof...(Args) != 1 ||
                                   (!std::is_same_v<std::decay_t<Args>, StaticPath<Depth>> && ...)>>
   constexpr StaticPath(Args&&... args)
-      : elements_{detail::safe_string_view(std::forward<Args>(args))...} {
+      : Storage{{detail::safe_string_view(std::forward<Args>(args))...}},
+        PathBase(this->elements_.data(), Depth) {
     static_assert(sizeof...(Args) == Depth, "Depth mismatch");
 
     // Robustness Guardrail: Block temporary std::strings from being bound!
@@ -72,9 +96,6 @@ class StaticPath : public PathBase {
                             std::is_rvalue_reference_v<Args&&>)),
                   "StackJson: Cannot bind a path to a temporary std::string! It will dangle.");
   }
-
-  std::size_t depth() const override { return Depth; }
-  std::string_view get_element(std::size_t index) const override { return elements_[index]; }
 
   // Forward arguments when extending the path
   template <typename... Args>
@@ -90,15 +111,8 @@ auto path(Args&&... args) {
 
 // A lightweight view used during recursive traversal to represent the "open" parent
 class PathView : public PathBase {
-  const PathBase& original_;
-  std::size_t limit_;
-
  public:
-  PathView(const PathBase& orig, std::size_t limit) : original_(orig), limit_(limit) {}
-  std::size_t depth() const override { return limit_; }
-  std::string_view get_element(std::size_t index) const override {
-    return original_.get_element(index);
-  }
+  constexpr PathView(const PathBase& orig, std::size_t limit) : PathBase(orig.data(), limit) {}
 };
 
 }  // namespace sjson

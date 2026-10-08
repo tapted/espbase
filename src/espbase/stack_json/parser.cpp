@@ -1,29 +1,105 @@
 #include "espbase/stack_json/parser.hpp"
 
 #include <cctype>
+#include <charconv>
 
 #include "espbase/stack_json/path.hpp"
 
 namespace sjson {
-namespace {
 
-class DynamicPathView : public PathBase {
-  std::span<const std::string_view> stack_;
-  std::size_t depth_;
-  std::string_view leaf_key_;
-
- public:
-  DynamicPathView(std::span<const std::string_view> stack, std::size_t depth, std::string_view leaf)
-      : stack_(stack), depth_(depth), leaf_key_(leaf) {}
-
-  std::size_t depth() const override { return depth_ + 1; }
-
-  std::string_view get_element(std::size_t index) const override {
-    return (index == depth_) ? leaf_key_ : stack_[index];
+void coerce_value(std::string_view raw_val, bool is_null, bool& target) {
+  if (is_null) {
+    target = false;
+    return;
   }
-};
+  target = (raw_val == "true" || raw_val == "1");
+}
 
-}  // namespace
+template <typename IntT>
+static void coerce_int(std::string_view raw_val, bool is_null, IntT& target) {
+  if (is_null) {
+    target = IntT{0};
+    return;
+  }
+  std::from_chars(raw_val.data(), raw_val.data() + raw_val.size(), target);
+}
+
+void coerce_value(std::string_view raw_val, bool is_null, char& target) {
+  coerce_int(raw_val, is_null, target);
+}
+void coerce_value(std::string_view raw_val, bool is_null, signed char& target) {
+  coerce_int(raw_val, is_null, target);
+}
+void coerce_value(std::string_view raw_val, bool is_null, unsigned char& target) {
+  coerce_int(raw_val, is_null, target);
+}
+void coerce_value(std::string_view raw_val, bool is_null, short& target) {
+  coerce_int(raw_val, is_null, target);
+}
+void coerce_value(std::string_view raw_val, bool is_null, unsigned short& target) {
+  coerce_int(raw_val, is_null, target);
+}
+void coerce_value(std::string_view raw_val, bool is_null, int& target) {
+  coerce_int(raw_val, is_null, target);
+}
+void coerce_value(std::string_view raw_val, bool is_null, unsigned int& target) {
+  coerce_int(raw_val, is_null, target);
+}
+void coerce_value(std::string_view raw_val, bool is_null, long& target) {
+  coerce_int(raw_val, is_null, target);
+}
+void coerce_value(std::string_view raw_val, bool is_null, unsigned long& target) {
+  coerce_int(raw_val, is_null, target);
+}
+void coerce_value(std::string_view raw_val, bool is_null, long long& target) {
+  coerce_int(raw_val, is_null, target);
+}
+void coerce_value(std::string_view raw_val, bool is_null, unsigned long long& target) {
+  coerce_int(raw_val, is_null, target);
+}
+
+void coerce_value(std::string_view raw_val, bool is_null, float& target) {
+  if (is_null) {
+    target = 0.0f;
+    return;
+  }
+  std::from_chars(raw_val.data(), raw_val.data() + raw_val.size(), target);
+}
+
+void coerce_value(std::string_view raw_val, bool is_null, double& target) {
+  if (is_null) {
+    target = 0.0;
+    return;
+  }
+  std::from_chars(raw_val.data(), raw_val.data() + raw_val.size(), target);
+}
+
+void coerce_value(std::string_view raw_val, bool is_null, std::string_view& target) {
+  if (is_null) {
+    target = {};
+    return;
+  }
+  target = raw_val;
+}
+
+void coerce_value(std::string_view raw_val, bool is_null, std::span<char>& target) {
+  if (is_null) {
+    target = {};
+    return;
+  }
+  std::size_t decoded_len = decode_json_string(raw_val, target);
+  target = target.subspan(0, decoded_len);
+}
+
+void coerce_value(std::string_view raw_val, bool is_null, std::string& target) {
+  if (is_null) {
+    target.clear();
+    return;
+  }
+  target.resize(raw_val.size());
+  std::size_t decoded_len = decode_json_string(raw_val, std::span<char>(target));
+  target.resize(decoded_len);
+}
 
 void DynamicNodeBase::assign(const PathBase&, std::string_view raw_val, bool is_string,
                              bool is_null) {
@@ -225,7 +301,8 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
   // Peek-ahead lambda to capture full objects/arrays for DynamicNodes
   auto capture_structural_value = [&]() {
     if (depth >= path_stack.size()) return;
-    DynamicPathView current_path(path_stack, depth, current_key);
+    path_stack[depth] = current_key;
+    PathBase current_path(path_stack.data(), depth + 1);
 
     bool needs_capture = false;
     ParseNodeBase* catch_all = nullptr;
@@ -321,7 +398,8 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
       } else {
         // Only evaluate bindings if we haven't exceeded our tracked path stack
         if (depth < path_stack.size()) {
-          DynamicPathView current_path(path_stack, depth, current_key);
+          path_stack[depth] = current_key;
+          PathBase current_path(path_stack.data(), depth + 1);
           bool matched = false;
           ParseNodeBase* catch_all = nullptr;
           for (auto* n : nodes) {
@@ -351,7 +429,8 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
 
       if (depth < path_stack.size()) {
         bool is_null = (prim_val == "null");
-        DynamicPathView current_path(path_stack, depth, current_key);
+        path_stack[depth] = current_key;
+        PathBase current_path(path_stack.data(), depth + 1);
         bool matched = false;
         ParseNodeBase* catch_all = nullptr;
         for (auto* n : nodes) {
