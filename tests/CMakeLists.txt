@@ -40,3 +40,20 @@ target_link_libraries(espbase_tests PRIVATE
 
 include(GoogleTest)
 gtest_discover_tests(espbase_tests)
+
+# --- stack_json Codegen & Assembly Analysis Target ---
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+add_custom_target(stack_json_codegen
+    COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/espbase/stack_json/codegen/run_codegen.py"
+            --compiler "${CMAKE_CXX_COMPILER}"
+            --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    COMMENT "Building stack_json representative corpus into annotated assembly and measuring template bloat..."
+    USES_TERMINAL
+)
+
+add_custom_target(codegen_asm DEPENDS stack_json_codegen)
+
+

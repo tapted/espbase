@@ -1,0 +1,82 @@
+{
+  "builder_arrays": {
+    "text": 846,
+    "rodata": 480,
+    "total": 1326
+  },
+  "builder_conditional": {
+    "text": 396,
+    "rodata": 424,
+    "total": 820
+  },
+  "builder_nested_doc": {
+    "text": 619,
+    "rodata": 721,
+    "total": 1340
+  },
+  "builder_nested_paths": {
+    "text": 398,
+    "rodata": 543,
+    "total": 941
+  },
+  "builder_primitive_multi": {
+    "text": 578,
+    "rodata": 694,
+    "total": 1272
+  },
+  "builder_primitive_scalar": {
+    "text": 184,
+    "rodata": 296,
+    "total": 480
+  },
+  "builder_stack_builder": {
+    "text": 400,
+    "rodata": 421,
+    "total": 821
+  },
+  "builder_strings": {
+    "text": 446,
+    "rodata": 677,
+    "total": 1123
+  },
+  "parser_dynamic_node": {
+    "text": 813,
+    "rodata": 399,
+    "total": 1212
+  },
+  "parser_entity_payload": {
+    "text": 1252,
+    "rodata": 1171,
+    "total": 2423
+  },
+  "parser_nested_paths": {
+    "text": 772,
+    "rodata": 648,
+    "total": 1420
+  },
+  "parser_primitive_multi": {
+    "text": 1250,
+    "rodata": 953,
+    "total": 2203
+  },
+  "parser_primitive_scalar": {
+    "text": 604,
+    "rodata": 394,
+    "total": 998
+  },
+  "parser_strings": {
+    "text": 670,
+    "rodata": 1026,
+    "total": 1696
+  },
+  "parser_sub_parser": {
+    "text": 1103,
+    "rodata": 753,
+    "total": 1856
+  },
+  "parser_unknown_catchall": {
+    "text": 817,
+    "rodata": 800,
+    "total": 1617
+  }
+}
