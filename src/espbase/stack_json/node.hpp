@@ -7,28 +7,29 @@
 namespace sjson {
 
 class NodeBase {
- protected:
-  const PathBase* path_ptr_;
+ private:
+  PathBase cached_path_;  // Caches a safe (sliced) view of the derived path
   bool emitted_ = false;
   bool omitted_ = false;
 
-  NodeBase(const NodeBase& other, const PathBase* new_path)
-      : path_ptr_(new_path), emitted_(other.emitted_), omitted_(other.omitted_) {}
+  virtual PathBase get_path() const = 0;
+
+ protected:
+  void on_emit() { emitted_ = true; }
 
  public:
-  explicit NodeBase(const PathBase* path_ptr) : path_ptr_(path_ptr) {}
   virtual ~NodeBase() = default;
 
-  // Delete base-level assignment to prevent object slicing
-  NodeBase& operator=(const NodeBase&) = delete;
-  NodeBase& operator=(NodeBase&&) = delete;
+  void reset() {
+    emitted_ = false;
+    cached_path_ = get_path();  // Binds the path to avoid virtual dispatch during hot traversal.
+  }
 
-  void reset() { emitted_ = false; }
   bool is_emitted() const { return emitted_; }
   bool is_omitted() const { return omitted_; }
   void set_omitted(bool o) { omitted_ = o; }
 
-  const PathBase& path() const { return *path_ptr_; }
+  const PathBase& path() const { return cached_path_; }
 
   virtual void emit_value(Buffer& buffer) = 0;
 };
@@ -38,19 +39,14 @@ class ValueNode : public NodeBase {
   PathT path_;
   ValueT value_;
 
+  PathBase get_path() const override { return path_; }
+
  public:
-  ValueNode(PathT p, ValueT&& v)
-      : NodeBase(&path_), path_(std::move(p)), value_(std::forward<ValueT>(v)) {}
-  ValueNode(const ValueNode& other)
-      : NodeBase(other, &path_), path_(other.path_), value_(other.value_) {}
-  ValueNode(ValueNode&& other)
-      : NodeBase(other, &path_),
-        path_(std::move(other.path_)),
-        value_(std::forward<ValueT>(other.value_)) {}
+  ValueNode(PathT p, ValueT&& v) : path_(std::move(p)), value_(std::forward<ValueT>(v)) {}
 
   void emit_value(Buffer& buffer) override {
     write_json_value(buffer, value_);
-    emitted_ = true;
+    on_emit();
   }
 };
 
