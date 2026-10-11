@@ -163,6 +163,7 @@ def compile_snippet(snippet: Path, output_dir: Path, compiler: str,
         "-std=gnu++26",
         "-Os",
         "-ffunction-sections",
+        "-fno-rtti",
         "-fdata-sections",
     ]
     for inc in include_dirs:
