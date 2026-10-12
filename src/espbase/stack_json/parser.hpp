@@ -11,16 +11,21 @@ namespace sjson {
 
 class ParseNodeBase {
  protected:
+  PathBase cached_path_;  // Caches a safe (sliced) view of the derived path
   bool is_set_ = false;
   bool is_null_ = false;
+  bool is_catch_all_ = false;
+
+  explicit constexpr ParseNodeBase(bool catch_all = false) : is_catch_all_(catch_all) {}
+
+  virtual PathBase get_path() const = 0;
 
  public:
   virtual ~ParseNodeBase() = default;
 
-  virtual const PathBase& path() const = 0;
-
+  const PathBase& path() const { return cached_path_; }
   // Whether this node is a catch-all (matches any path). Used for dynamic nodes.
-  virtual bool is_catch_all() const { return false; }
+  bool is_catch_all() const { return is_catch_all_; }
 
   // The parser will call this when it finds a matching path
   virtual void assign(const PathBase& actual_path, std::string_view raw_val, bool is_string,
@@ -28,7 +33,11 @@ class ParseNodeBase {
 
   bool is_set() const { return is_set_; }
   bool is_null() const { return is_null_; }
-  void reset() { is_set_ = is_null_ = false; }
+
+  void reset() {
+    is_set_ = is_null_ = false;
+    cached_path_ = get_path();  // Binds the path to avoid virtual dispatch during hot traversal.
+  }
 };
 
 template <typename TargetT>
@@ -36,7 +45,7 @@ class ParseNodeBaseT : public ParseNodeBase {
   TargetT& target_;
 
  public:
-  explicit constexpr ParseNodeBaseT(TargetT& target) : target_(target) {}
+  explicit constexpr ParseNodeBaseT(TargetT& target) : ParseNodeBase(false), target_(target) {}
 
   void assign(const PathBase&, std::string_view raw_val, bool, bool is_null) override {
     is_set_ = true;
@@ -48,12 +57,13 @@ class ParseNodeBaseT : public ParseNodeBase {
 template <typename PathT, typename TargetT>
 class BindNode : public ParseNodeBaseT<TargetT> {
   PathT path_;
+  PathBase get_path() const override { return path_; }
 
  public:
   static constexpr std::size_t static_depth = PathT::static_depth;
 
-  explicit constexpr BindNode(PathT p, TargetT& t) : ParseNodeBaseT<TargetT>(t), path_(p) {}
-  const PathBase& path() const override { return path_; }
+  explicit constexpr BindNode(PathT p, TargetT& t)
+      : ParseNodeBaseT<TargetT>(t), path_(std::move(p)) {}
 };
 
 class DynamicNodeBase : public ParseNodeBase {
@@ -64,6 +74,8 @@ class DynamicNodeBase : public ParseNodeBase {
   bool iter_started_ = false;
 
  public:
+  explicit constexpr DynamicNodeBase(bool catch_all = false) : ParseNodeBase(catch_all) {}
+
   void assign(const PathBase&, std::string_view raw_val, bool is_string, bool is_null) override;
 
   // Access the raw unparsed JSON string for this node. For arrays and sub-objects, this will
@@ -107,23 +119,24 @@ class DynamicNodeBase : public ParseNodeBase {
 template <typename PathT>
 class DynamicNode : public DynamicNodeBase {
   PathT path_;
+  PathBase get_path() const override { return path_; }
 
  public:
   static constexpr std::size_t static_depth = PathT::static_depth;
-  explicit DynamicNode(PathT p) : path_(p) {}
-  const PathBase& path() const override { return path_; }
+  explicit DynamicNode(PathT p) : DynamicNodeBase(false), path_(std::move(p)) {}
 };
 
 class UnknownBindNodeBase : public DynamicNodeBase {
- public:
-  static constexpr std::size_t static_depth = 0;
-  bool is_catch_all() const override { return true; }
   // Dummy path to satisfy the pure virtual interface.
   // The parser logic relies on is_catch_all() instead of matching this path.
-  const PathBase& path() const override {
+  PathBase get_path() const override {
     static StaticPath<0> dummy;
     return dummy;
   }
+
+ public:
+  static constexpr std::size_t static_depth = 0;
+  UnknownBindNodeBase() : DynamicNodeBase(true) {}
 };
 
 template <typename Callback>
