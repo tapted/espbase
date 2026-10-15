@@ -1,82 +1,82 @@
 {
   "builder_arrays": {
-    "text": 846,
-    "rodata": 480,
-    "total": 1326
+    "text": 936,
+    "rodata": 126,
+    "total": 1062
   },
   "builder_conditional": {
-    "text": 396,
-    "rodata": 424,
-    "total": 820
+    "text": 477,
+    "rodata": 118,
+    "total": 595
   },
   "builder_nested_doc": {
-    "text": 619,
-    "rodata": 721,
-    "total": 1340
+    "text": 991,
+    "rodata": 231,
+    "total": 1222
   },
   "builder_nested_paths": {
-    "text": 398,
-    "rodata": 543,
-    "total": 941
+    "text": 582,
+    "rodata": 139,
+    "total": 721
   },
   "builder_primitive_multi": {
-    "text": 578,
-    "rodata": 694,
-    "total": 1272
+    "text": 778,
+    "rodata": 251,
+    "total": 1029
   },
   "builder_primitive_scalar": {
-    "text": 184,
-    "rodata": 296,
-    "total": 480
+    "text": 182,
+    "rodata": 60,
+    "total": 242
   },
   "builder_stack_builder": {
-    "text": 400,
-    "rodata": 421,
-    "total": 821
+    "text": 423,
+    "rodata": 114,
+    "total": 537
   },
   "builder_strings": {
-    "text": 446,
-    "rodata": 677,
-    "total": 1123
+    "text": 582,
+    "rodata": 184,
+    "total": 766
   },
   "parser_dynamic_node": {
-    "text": 813,
-    "rodata": 399,
-    "total": 1212
+    "text": 375,
+    "rodata": 50,
+    "total": 425
   },
   "parser_entity_payload": {
-    "text": 1252,
-    "rodata": 1171,
-    "total": 2423
+    "text": 943,
+    "rodata": 214,
+    "total": 1157
   },
   "parser_nested_paths": {
-    "text": 772,
-    "rodata": 648,
-    "total": 1420
+    "text": 424,
+    "rodata": 118,
+    "total": 542
   },
   "parser_primitive_multi": {
-    "text": 1250,
-    "rodata": 953,
-    "total": 2203
+    "text": 794,
+    "rodata": 195,
+    "total": 989
   },
   "parser_primitive_scalar": {
-    "text": 604,
-    "rodata": 394,
-    "total": 998
+    "text": 229,
+    "rodata": 46,
+    "total": 275
   },
   "parser_strings": {
-    "text": 670,
-    "rodata": 1026,
-    "total": 1696
+    "text": 624,
+    "rodata": 146,
+    "total": 770
   },
   "parser_sub_parser": {
-    "text": 1103,
-    "rodata": 753,
-    "total": 1856
+    "text": 716,
+    "rodata": 134,
+    "total": 850
   },
   "parser_unknown_catchall": {
-    "text": 817,
-    "rodata": 800,
-    "total": 1617
+    "text": 461,
+    "rodata": 86,
+    "total": 547
   }
 }

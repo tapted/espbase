@@ -7,30 +7,22 @@
 namespace sjson {
 
 class NodeBase {
- private:
-  PathBase cached_path_;  // Caches a safe (sliced) view of the derived path
+ protected:
   bool emitted_ = false;
   bool omitted_ = false;
 
-  virtual PathBase get_path() const = 0;
-
- protected:
   void on_emit() { emitted_ = true; }
 
  public:
   virtual ~NodeBase() = default;
 
-  void reset() {
-    emitted_ = false;
-    cached_path_ = get_path();  // Binds the path to avoid virtual dispatch during hot traversal.
-  }
+  void reset() { emitted_ = false; }
 
   bool is_emitted() const { return emitted_; }
   bool is_omitted() const { return omitted_; }
   void set_omitted(bool o) { omitted_ = o; }
 
-  const PathBase& path() const { return cached_path_; }
-
+  virtual const PathBase& path() const = 0;
   virtual void emit_value(Buffer& buffer) = 0;
 };
 
@@ -39,10 +31,11 @@ class ValueNode : public NodeBase {
   PathT path_;
   ValueT value_;
 
-  PathBase get_path() const override { return path_; }
-
  public:
-  ValueNode(PathT p, ValueT&& v) : path_(std::move(p)), value_(std::forward<ValueT>(v)) {}
+  template <typename P, typename V>
+  ValueNode(P&& p, V&& v) : path_(std::forward<P>(p)), value_(std::forward<V>(v)) {}
+
+  const PathBase& path() const override { return path_; }
 
   void emit_value(Buffer& buffer) override {
     write_json_value(buffer, value_);
@@ -51,8 +44,8 @@ class ValueNode : public NodeBase {
 };
 
 template <typename PathT, typename ValueT>
-auto node(PathT p, ValueT&& val) {
-  return ValueNode<PathT, ValueT>(p, std::forward<ValueT>(val));
+auto node(PathT&& p, ValueT&& val) {
+  return ValueNode<std::decay_t<PathT>, ValueT>(std::forward<PathT>(p), std::forward<ValueT>(val));
 }
 
 template <typename ValueT>
@@ -61,8 +54,8 @@ auto node(const char* root_key, ValueT&& val) {
 }
 
 template <typename PathT, typename ValueT>
-auto node_if(bool condition, PathT p, ValueT&& val) {
-  auto n = node(p, std::forward<ValueT>(val));
+auto node_if(bool condition, PathT&& p, ValueT&& val) {
+  auto n = node(std::forward<PathT>(p), std::forward<ValueT>(val));
   n.set_omitted(!condition);
   return n;
 }
@@ -73,10 +66,10 @@ auto node_if(bool condition, const char* root_key, ValueT&& val) {
 }
 
 template <typename PathT>
-auto node_if(PathT p, const char* val) {
+auto node_if(PathT&& p, const char* val) {
   // std::move forces ValueT to deduce as 'const char*' instead of 'const char*&'
   // This guarantees the node copies the pointer itself, rather than referencing the local variable.
-  return node_if(val != nullptr, p, std::move(val));
+  return node_if(val != nullptr, std::forward<PathT>(p), std::move(val));
 }
 
 inline auto node_if(const char* root_key, const char* val) {

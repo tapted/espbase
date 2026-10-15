@@ -11,21 +11,21 @@ namespace sjson {
 
 class ParseNodeBase {
  protected:
-  PathBase cached_path_;  // Caches a safe (sliced) view of the derived path
+  const PathBase* path_ptr_ = nullptr;
   bool is_set_ = false;
   bool is_null_ = false;
   bool is_catch_all_ = false;
 
   explicit constexpr ParseNodeBase(bool catch_all = false) : is_catch_all_(catch_all) {}
 
-  virtual PathBase get_path() const = 0;
-
  public:
   virtual ~ParseNodeBase() = default;
 
-  const PathBase& path() const { return cached_path_; }
+  const PathBase& path() const { return *path_ptr_; }
   // Whether this node is a catch-all (matches any path). Used for dynamic nodes.
   bool is_catch_all() const { return is_catch_all_; }
+
+  ParseNodeBase* init_node() { return this; }
 
   // The parser will call this when it finds a matching path
   virtual void assign(const PathBase& actual_path, std::string_view raw_val, bool is_string,
@@ -36,7 +36,6 @@ class ParseNodeBase {
 
   void reset() {
     is_set_ = is_null_ = false;
-    cached_path_ = get_path();  // Binds the path to avoid virtual dispatch during hot traversal.
   }
 };
 
@@ -57,13 +56,18 @@ class ParseNodeBaseT : public ParseNodeBase {
 template <typename PathT, typename TargetT>
 class BindNode : public ParseNodeBaseT<TargetT> {
   PathT path_;
-  PathBase get_path() const override { return path_; }
 
  public:
   static constexpr std::size_t static_depth = PathT::static_depth;
 
-  explicit constexpr BindNode(PathT p, TargetT& t)
-      : ParseNodeBaseT<TargetT>(t), path_(std::move(p)) {}
+  template <typename P>
+  explicit constexpr BindNode(P&& p, TargetT& t)
+      : ParseNodeBaseT<TargetT>(t), path_(std::forward<P>(p)) {}
+
+  ParseNodeBase* init_node() {
+    this->path_ptr_ = &path_;
+    return this;
+  }
 };
 
 class DynamicNodeBase : public ParseNodeBase {
@@ -119,24 +123,31 @@ class DynamicNodeBase : public ParseNodeBase {
 template <typename PathT>
 class DynamicNode : public DynamicNodeBase {
   PathT path_;
-  PathBase get_path() const override { return path_; }
 
  public:
   static constexpr std::size_t static_depth = PathT::static_depth;
-  explicit DynamicNode(PathT p) : DynamicNodeBase(false), path_(std::move(p)) {}
+  template <typename P>
+  explicit DynamicNode(P&& p) : DynamicNodeBase(false), path_(std::forward<P>(p)) {}
+
+  ParseNodeBase* init_node() {
+    this->path_ptr_ = &path_;
+    return this;
+  }
 };
 
 class UnknownBindNodeBase : public DynamicNodeBase {
-  // Dummy path to satisfy the pure virtual interface.
-  // The parser logic relies on is_catch_all() instead of matching this path.
-  PathBase get_path() const override {
-    static StaticPath<0> dummy;
-    return dummy;
-  }
+  static inline StaticPath<0> dummy{};
 
  public:
   static constexpr std::size_t static_depth = 0;
-  UnknownBindNodeBase() : DynamicNodeBase(true) {}
+  UnknownBindNodeBase() : DynamicNodeBase(true) {
+    this->path_ptr_ = &dummy;
+  }
+
+  ParseNodeBase* init_node() {
+    this->path_ptr_ = &dummy;
+    return this;
+  }
 };
 
 template <typename Callback>
@@ -169,12 +180,10 @@ class Parser {
         [&]<std::size_t... I>(std::index_sequence<I...>) {
           // If the tuple holds a reference, std::get returns it, and '&' extracts
           // the address of your original local variable.
-          return std::array<ParseNodeBase*, sizeof...(Nodes)>{&std::get<I>(nodes_)...};
+          return std::array<ParseNodeBase*, sizeof...(Nodes)>{std::get<I>(nodes_).init_node()...};
         }(std::make_index_sequence<sizeof...(Nodes)>{});
 
     std::array<std::string_view, MaxDepth> path_stack;
-
-    for (auto* n : node_ptrs) n->reset();
     parse_json_nodes(json, node_ptrs, path_stack);
   }
 
@@ -190,8 +199,8 @@ class Parser {
 
 // Target Bindings
 template <typename PathT, typename TargetT>
-auto bind(PathT p, TargetT& target) {
-  return BindNode<PathT, TargetT>(p, target);
+auto bind(PathT&& p, TargetT& target) {
+  return BindNode<std::decay_t<PathT>, TargetT>(std::forward<PathT>(p), target);
 }
 
 // Overload for root keys
@@ -202,8 +211,8 @@ auto bind(const char* root_key, TargetT& target) {
 
 // Dynamic Variant Bindings
 template <typename PathT>
-auto bind(PathT p) {
-  return DynamicNode<PathT>(p);
+auto bind(PathT&& p) {
+  return DynamicNode<std::decay_t<PathT>>(std::forward<PathT>(p));
 }
 
 inline auto bind(const char* root_key) {

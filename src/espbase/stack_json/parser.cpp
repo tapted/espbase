@@ -267,6 +267,7 @@ std::size_t decode_json_string(std::string_view input, std::span<char> out_buffe
 
 void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
                       std::span<std::string_view> path_stack) {
+  for (auto* n : nodes) n->reset();
   std::size_t depth = 0;
   std::string_view current_key;
   std::size_t i = 0;

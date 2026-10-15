@@ -170,7 +170,7 @@ def compile_snippet(snippet: Path, output_dir: Path, compiler: str,
         base_cmd.extend(["-I", str(inc)])
 
     # 1. Generate raw assembly with verbose compiler comments
-    cmd_asm = base_cmd + ["-S", "-fverbose-asm", str(snippet), "-o", str(asm_raw)]
+    cmd_asm = base_cmd + ["-g", "-S", "-fverbose-asm", str(snippet), "-o", str(asm_raw)]
     res_asm = subprocess.run(cmd_asm, capture_output=True, text=True)
     if res_asm.returncode != 0:
         print(f"Error compiling {snippet.name} to assembly:\n{res_asm.stderr}", file=sys.stderr)

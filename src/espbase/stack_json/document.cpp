@@ -7,17 +7,18 @@ static bool emit_level(Buffer& buffer, std::span<NodeBase*> nodes, const PathBas
 
   for (auto* n : nodes) {
     if (n->is_emitted() || n->is_omitted()) continue;
-    if (!n->path().matches_parent(current_path)) continue;
+    const PathBase& n_path = n->path();
+    if (!n_path.matches_parent(current_path)) continue;
 
     if (!is_first_child) {
       if (!buffer.write(",")) return false;
     }
 
-    std::size_t n_depth = n->path().depth();
+    std::size_t n_depth = n_path.depth();
     std::size_t c_depth = current_path.depth();
 
     // Write the key
-    if (!buffer.write_escaped(n->path().get_element(c_depth))) return false;
+    if (!buffer.write_escaped(n_path.get_element(c_depth))) return false;
     if (!buffer.write(":")) return false;
 
     if (n_depth == c_depth + 1) {
@@ -26,7 +27,7 @@ static bool emit_level(Buffer& buffer, std::span<NodeBase*> nodes, const PathBas
     } else {
       // Intermediate object required
       if (!buffer.write("{")) return false;
-      PathView next_path(n->path(), c_depth + 1);
+      PathView next_path(n_path, c_depth + 1);
 
       // Recurse: this inner call will process ALL nodes that share this new path
       if (!emit_level(buffer, nodes, next_path)) return false;
