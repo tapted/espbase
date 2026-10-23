@@ -1,5 +1,6 @@
 #include "espbase/boot/delayed_pm_enable.hpp"
 
+#include <bit>
 #include <driver/gpio.h>
 #include <esp_log.h>
 #include <esp_pm.h>
@@ -32,10 +33,11 @@ static void apply_pm_override(void* /*arg1*/, uint32_t /*arg2*/) {
   ESP_LOGW(TAG, "Boot button pressed. Tickless Idle disabled until next reboot.");
 }
 
-static void IRAM_ATTR boot_button_isr(void* /*arg*/) {
+static void IRAM_ATTR boot_button_isr(void* arg) {
+  gpio_num_t pin_boot = std::bit_cast<gpio_num_t>(arg);
   PmState was_active = s_state;
   s_state = PmState::PM_OVERRIDDEN;
-  gpio_set_intr_type(GPIO_NUM_0, GPIO_INTR_DISABLE);  // Never fire again.
+  gpio_set_intr_type(pin_boot, GPIO_INTR_DISABLE);  // Never fire again.
   if (was_active == PmState::PM_ACTIVE_ALLOW_OVERRIDE) {
     BaseType_t high_task_wakeup = pdFALSE;
     xTimerPendFunctionCallFromISR(apply_pm_override, nullptr, 0, &high_task_wakeup);
@@ -93,7 +95,7 @@ void delayed_pm_enable(const DelayedPmEnableConfig& config) {
       s_state = PmState::BOOT_WINDOW_ALLOW_OVERRIDE;
     }
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << GPIO_NUM_0),
+        .pin_bit_mask = (1ULL << config.pin_boot),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -102,7 +104,8 @@ void delayed_pm_enable(const DelayedPmEnableConfig& config) {
     gpio_config(&io_conf);
 
     gpio_install_isr_service(0);
-    gpio_isr_handler_add(GPIO_NUM_0, boot_button_isr, nullptr);
+    void* args = std::bit_cast<void*>(config.pin_boot);
+    gpio_isr_handler_add(config.pin_boot, boot_button_isr, args);
   }
 
   esp_timer_create_args_t timer_args = {
