@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <string_view>
 #include <type_traits>
 
@@ -13,42 +14,37 @@ class Document;
 template <typename... Elements>
 class ArrayDocument;
 
-template <typename T>
-void write_json_value(Buffer& buffer, T& value) {
-  using DecayedT = std::decay_t<T>;
+// Out-of-line scalar emitters implemented in document.cpp
+void write_json_value(Buffer& buffer, long long value);
+void write_json_value(Buffer& buffer, unsigned long long value);
+void write_json_value(Buffer& buffer, long value);
+void write_json_value(Buffer& buffer, unsigned long value);
+void write_json_value(Buffer& buffer, int value);
+void write_json_value(Buffer& buffer, unsigned int value);
+void write_json_value(Buffer& buffer, short value);
+void write_json_value(Buffer& buffer, unsigned short value);
+void write_json_value(Buffer& buffer, signed char value);
+void write_json_value(Buffer& buffer, unsigned char value);
+void write_json_value(Buffer& buffer, double value);
+void write_json_value(Buffer& buffer, float value);
+void write_json_value(Buffer& buffer, bool value);
+void write_json_value(Buffer& buffer, std::nullptr_t);
+void write_json_value(Buffer& buffer, const char* value);
+void write_json_value(Buffer& buffer, std::string_view value);
+void write_json_value(Buffer& buffer, const std::string& value);
 
+// Fallback template for lambdas (printers) and nested documents
+template <typename T>
+  requires(!std::is_fundamental_v<std::decay_t<T>> &&
+           !std::is_convertible_v<T, std::string_view> &&
+           !std::is_same_v<std::decay_t<T>, std::nullptr_t>)
+void write_json_value(Buffer& buffer, T& value) {
   if constexpr (std::is_invocable_v<T, Printer&>) {
     // inline "printf" support: `node("key", [&](auto& print) { print("%s_%s", foo, bar); })`
     buffer.write("\"");
     Printer printer(buffer);
     value(printer);
     buffer.write("\"");
-  } else if constexpr (std::is_convertible_v<T, std::string_view>) {
-    // Strings (safely intercept null pointers before they hit strlen)
-    using BaseT = std::remove_reference_t<T>;
-    if constexpr (std::is_pointer_v<BaseT>) {
-      if (value == nullptr) {
-        buffer.write("null");
-        return;
-      }
-    }
-    buffer.write_escaped(std::string_view(value));
-  } else if constexpr (std::is_same_v<DecayedT, bool>) {
-    // Intercept bool before is_integral catches it
-    buffer.write(value ? "true" : "false");
-  } else if constexpr (std::is_same_v<DecayedT, std::nullptr_t>) {
-    // Handle null values
-    buffer.write("null");
-  } else if constexpr (std::is_integral_v<T>) {
-    // Integers
-    if constexpr (std::is_signed_v<T>) {
-      Printer::printx(buffer, "%lld", static_cast<long long>(value));
-    } else {
-      Printer::printx(buffer, "%llu", static_cast<unsigned long long>(value));
-    }
-  } else if constexpr (std::is_floating_point_v<T>) {
-    // Floats
-    Printer::printx(buffer, "%g", static_cast<double>(value));
   } else {
     // Nested Documents and ArrayDocuments
     static_assert(

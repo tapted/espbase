@@ -7,7 +7,7 @@ static bool emit_level(Buffer& buffer, std::span<NodeBase*> nodes, const PathBas
 
   for (auto* n : nodes) {
     if (n->is_emitted() || n->is_omitted()) continue;
-    const PathBase& n_path = n->path();
+    PathBase n_path = n->path();
     if (!n_path.matches_parent(current_path)) continue;
 
     if (!is_first_child) {
@@ -51,6 +51,62 @@ size_t emit_json_nodes(Buffer& buffer, std::span<NodeBase*> nodes) {
   if (!buffer.write("}")) return 0;
 
   return buffer.length() - before;
+}
+
+void write_json_value(Buffer& buffer, long long value) {
+  Printer::printx(buffer, "%lld", value);
+}
+void write_json_value(Buffer& buffer, unsigned long long value) {
+  Printer::printx(buffer, "%llu", value);
+}
+void write_json_value(Buffer& buffer, long value) {
+  Printer::printx(buffer, "%ld", value);
+}
+void write_json_value(Buffer& buffer, unsigned long value) {
+  Printer::printx(buffer, "%lu", value);
+}
+void write_json_value(Buffer& buffer, int value) {
+  Printer::printx(buffer, "%d", value);
+}
+void write_json_value(Buffer& buffer, unsigned int value) {
+  Printer::printx(buffer, "%u", value);
+}
+void write_json_value(Buffer& buffer, short value) {
+  Printer::printx(buffer, "%d", static_cast<int>(value));
+}
+void write_json_value(Buffer& buffer, unsigned short value) {
+  Printer::printx(buffer, "%u", static_cast<unsigned int>(value));
+}
+void write_json_value(Buffer& buffer, signed char value) {
+  Printer::printx(buffer, "%d", static_cast<int>(value));
+}
+void write_json_value(Buffer& buffer, unsigned char value) {
+  Printer::printx(buffer, "%u", static_cast<unsigned int>(value));
+}
+void write_json_value(Buffer& buffer, double value) {
+  Printer::printx(buffer, "%g", value);
+}
+void write_json_value(Buffer& buffer, float value) {
+  Printer::printx(buffer, "%g", static_cast<double>(value));
+}
+void write_json_value(Buffer& buffer, bool value) {
+  buffer.write(value ? "true" : "false");
+}
+void write_json_value(Buffer& buffer, std::nullptr_t) {
+  buffer.write("null");
+}
+void write_json_value(Buffer& buffer, const char* value) {
+  if (value == nullptr) {
+    buffer.write("null");
+  } else {
+    buffer.write_escaped(value);
+  }
+}
+void write_json_value(Buffer& buffer, std::string_view value) {
+  buffer.write_escaped(value);
+}
+void write_json_value(Buffer& buffer, const std::string& value) {
+  buffer.write_escaped(value);
 }
 
 }  // namespace sjson

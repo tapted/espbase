@@ -46,55 +46,44 @@ class PathBase {
 };
 
 template <std::size_t Depth>
-struct StaticPathStorage {
-  std::array<std::string_view, Depth> elements_{};
-};
-
-template <std::size_t Depth>
-class StaticPath : private StaticPathStorage<Depth>, public PathBase {
+class StaticPath {
  private:
-  using Storage = StaticPathStorage<Depth>;
-  using Storage::elements_;
+  std::array<std::string_view, Depth> elements_{};
+
   // Forward references safely down the chain
   template <std::size_t... I, typename... Args>
   auto append_impl(std::index_sequence<I...>, Args&&... args) const {
-    // Creates a new StaticPath with Depth + the number of new arguments
     return StaticPath<Depth + sizeof...(Args)>(elements_[I]..., std::forward<Args>(args)...);
   }
 
  public:
   static constexpr std::size_t static_depth = Depth;
 
-  // Standard copy/move operations updating data_ pointer to local elements_
-  StaticPath(const StaticPath& other) : Storage(other), PathBase(this->elements_.data(), Depth) {}
-  StaticPath(StaticPath&& other)
-      : Storage(std::move(other)), PathBase(this->elements_.data(), Depth) {}
-  StaticPath& operator=(const StaticPath& other) {
-    if (this != &other) {
-      elements_ = other.elements_;
-    }
-    return *this;
-  }
-  StaticPath& operator=(StaticPath&& other) {
-    if (this != &other) {
-      elements_ = std::move(other.elements_);
-    }
-    return *this;
-  }
+  constexpr StaticPath() = default;
 
   // The variadic constructor with a constraint to prevent hijacking the copy constructor.
   template <typename... Args, typename = std::enable_if_t<
                                   sizeof...(Args) != 1 ||
                                   (!std::is_same_v<std::decay_t<Args>, StaticPath<Depth>> && ...)>>
   constexpr StaticPath(Args&&... args)
-      : Storage{{detail::safe_string_view(std::forward<Args>(args))...}},
-        PathBase(this->elements_.data(), Depth) {
+      : elements_{{detail::safe_string_view(std::forward<Args>(args))...}} {
     static_assert(sizeof...(Args) == Depth, "Depth mismatch");
 
     // Robustness Guardrail: Block temporary std::strings from being bound!
     static_assert((... && !(std::is_same_v<std::decay_t<Args>, std::string> &&
                             std::is_rvalue_reference_v<Args&&>)),
                   "StackJson: Cannot bind a path to a temporary std::string! It will dangle.");
+  }
+
+  constexpr std::size_t depth() const { return Depth; }
+  constexpr std::string_view get_element(std::size_t index) const { return elements_[index]; }
+  constexpr const std::string_view* data() const { return elements_.data(); }
+
+  constexpr operator PathBase() const { return PathBase(elements_.data(), Depth); }
+  constexpr PathBase to_path() const { return PathBase(elements_.data(), Depth); }
+
+  bool matches_parent(const PathBase& parent) const {
+    return to_path().matches_parent(parent);
   }
 
   // Forward arguments when extending the path

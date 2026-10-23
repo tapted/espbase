@@ -22,20 +22,18 @@ class NodeBase {
   bool is_omitted() const { return omitted_; }
   void set_omitted(bool o) { omitted_ = o; }
 
-  virtual const PathBase& path() const = 0;
+  virtual PathBase path() const = 0;
   virtual void emit_value(Buffer& buffer) = 0;
 };
 
-template <typename PathT, typename ValueT>
-class ValueNode : public NodeBase {
-  PathT path_;
+template <typename ValueT>
+class ValueNodeBaseT : public NodeBase {
+ protected:
   ValueT value_;
 
  public:
-  template <typename P, typename V>
-  ValueNode(P&& p, V&& v) : path_(std::forward<P>(p)), value_(std::forward<V>(v)) {}
-
-  const PathBase& path() const override { return path_; }
+  template <typename V>
+  explicit ValueNodeBaseT(V&& v) : value_(std::forward<V>(v)) {}
 
   void emit_value(Buffer& buffer) override {
     write_json_value(buffer, value_);
@@ -44,8 +42,27 @@ class ValueNode : public NodeBase {
 };
 
 template <typename PathT, typename ValueT>
+class ValueNode : public ValueNodeBaseT<ValueT> {
+  PathT path_;
+
+ public:
+  template <typename P, typename V>
+  ValueNode(P&& p, V&& v)
+      : ValueNodeBaseT<ValueT>(std::forward<V>(v)), path_(std::forward<P>(p)) {}
+
+  PathBase path() const override { return path_; }
+};
+
+template <typename T>
+using node_value_t = std::conditional_t<std::is_array_v<std::remove_reference_t<T>>,
+                                        std::decay_t<T>,
+                                        T>;
+
+template <typename PathT, typename ValueT>
 auto node(PathT&& p, ValueT&& val) {
-  return ValueNode<std::decay_t<PathT>, ValueT>(std::forward<PathT>(p), std::forward<ValueT>(val));
+  using ValType = node_value_t<ValueT>;
+  return ValueNode<std::decay_t<PathT>, ValType>(std::forward<PathT>(p),
+                                                 static_cast<ValType>(std::forward<ValueT>(val)));
 }
 
 template <typename ValueT>

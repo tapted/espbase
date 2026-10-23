@@ -81,29 +81,50 @@ Two subsequent approaches were attempted to remove virtual lookups from nodes:
   - Updated `node()`, `node_if()`, and `bind()` to take `PathT&&` and `ValueT&&`, eliminating double-copies of `StaticPath`.
 - **Result:** Total corpus footprint dropped to **11,729 B** (-1,111 B vs 12,840 B baseline, -45.6% vs original baseline).
 
+### Pass 3: Out-of-Line Scalars, ValueNodeBaseT, and Trivially Copyable StaticPath (9,027 B)
+- **Out-of-Line Scalar Serialization (`value.hpp` & `document.cpp`):**
+  - Declared non-template, out-of-line overloads for all fundamental scalar types (`int`, `unsigned int`, `short`, `unsigned short`, `long`, `unsigned long`, `long long`, `unsigned long long`, `float`, `double`, `bool`, `nullptr_t`, `const char*`, `std::string_view`, `const std::string&`).
+  - Constrained generic fallback via C++20 `requires` to only match lambdas and nested Documents.
+  - Eliminated inlined `Printer::printx` with varargs overhead, register spills, and literal format strings (`"%lld"`, `"%g"`) from caller translation units.
+- **Factored `ValueNodeBaseT<ValueT>` Base Class (`node.hpp`):**
+  - Factored `value_` storage and `emit_value(Buffer&)` into `ValueNodeBaseT<ValueT>`.
+  - Derived `ValueNode<PathT, ValueT>` now only overrides `path()`. Nodes sharing the same payload type with different paths now share identical `emit_value` code.
+- **Trivially Copyable `StaticPath<N>` (`path.hpp`):**
+  - Removed inheritance from `PathBase`. Eliminated the self-referential `data_` pointer pointing to member `elements_`.
+  - Converted `StaticPath<N>` into a plain value type storing only `std::array<std::string_view, N>`, making it trivially copyable and movable (`std::is_trivially_copyable_v<StaticPath<N>> == true`).
+  - Halved the size of `StaticPath<1>` (from 32 bytes to 16 bytes) and reduced all node tuple stack footprints.
+  - Replaced non-trivial copy/move constructors on `std::tuple` moves with flat register/stack copies.
+- **By-Value `NodeBase::path()` & Direct `ParseNodeBase::path_`:**
+  - `NodeBase::path()` now returns `PathBase` (16 bytes, two registers) by value.
+  - `ParseNodeBase` stores `PathBase path_{}` directly, populated at initialization by `init_node()`. Completely eliminated `dummy` static object in `UnknownBindNodeBase` and removed pointer-to-pointer indirection when matching parser paths.
+- **Array Type Decay in `node()` (`node.hpp`):**
+  - Array string literals (`"foo"`, `"bar"`) now decay to `const char*` instead of deducing distinct array references (`char const (&)[N]`).
+  - Prevents combinatorial template bloat and duplicate vtables across string literals of differing lengths.
+- **Result:** Total corpus footprint dropped from **11,729 B to 9,027 B** (**-2,702 B net saving**, -23.0% in this pass, **-58.1% cumulative** from 21,548 B starting baseline).
+
 ---
 
-## 4. Current Corpus Summary (11,729 B)
+## 4. Current Corpus Summary (9,027 B)
 
-| Snippet Case | Code (.text) | ROData | Total | Net vs Baseline |
+| Snippet Case | Code (.text) | ROData | Total | Net vs Baseline (11,729 B) |
 |:---|---:|---:|---:|---:|
-| `builder_arrays` | 936 B | 126 B | **1062 B** | -32 B |
-| `builder_conditional` | 477 B | 118 B | **595 B** | -30 B |
-| `builder_nested_doc` | 991 B | 231 B | **1222 B** | -49 B |
-| `builder_nested_paths` | 582 B | 139 B | **721 B** | +127 B |
-| `builder_primitive_multi` | 778 B | 251 B | **1029 B** | -46 B |
-| `builder_primitive_scalar` | 182 B | 60 B | **242 B** | -17 B |
-| `builder_stack_builder` | 423 B | 114 B | **537 B** | -28 B |
-| `builder_strings` | 582 B | 184 B | **766 B** | -50 B |
-| `parser_dynamic_node` | 375 B | 50 B | **425 B** | -103 B |
-| `parser_entity_payload` | 943 B | 214 B | **1157 B** | -105 B |
-| `parser_nested_paths` | 424 B | 118 B | **542 B** | -132 B |
-| `parser_primitive_multi` | 794 B | 195 B | **989 B** | -112 B |
-| `parser_primitive_scalar` | 229 B | 46 B | **275 B** | -100 B |
-| `parser_strings` | 624 B | 146 B | **770 B** | -109 B |
-| `parser_sub_parser` | 716 B | 134 B | **850 B** | -214 B |
-| `parser_unknown_catchall` | 461 B | 86 B | **547 B** | -111 B |
-| **TOTAL CORPUS** | **9517 B** | **2212 B** | **11729 B** | **-1111 B** |
+| `builder_arrays` | 623 B | 121 B | **744 B** | -318 B |
+| `builder_conditional` | 284 B | 108 B | **392 B** | -203 B |
+| `builder_nested_doc` | 497 B | 221 B | **718 B** | -504 B |
+| `builder_nested_paths` | 293 B | 134 B | **427 B** | -294 B |
+| `builder_primitive_multi` | 509 B | 227 B | **736 B** | -293 B |
+| `builder_primitive_scalar` | 150 B | 55 B | **205 B** | -37 B |
+| `builder_stack_builder` | 291 B | 104 B | **395 B** | -142 B |
+| `builder_strings` | 377 B | 184 B | **561 B** | -205 B |
+| `parser_dynamic_node` | 399 B | 50 B | **449 B** | +24 B |
+| `parser_entity_payload` | 753 B | 214 B | **967 B** | -190 B |
+| `parser_nested_paths` | 340 B | 118 B | **458 B** | -84 B |
+| `parser_primitive_multi` | 624 B | 195 B | **819 B** | -170 B |
+| `parser_primitive_scalar` | 196 B | 46 B | **242 B** | -33 B |
+| `parser_strings` | 468 B | 146 B | **614 B** | -156 B |
+| `parser_sub_parser` | 679 B | 134 B | **813 B** | -37 B |
+| `parser_unknown_catchall` | 401 B | 86 B | **487 B** | -60 B |
+| **TOTAL CORPUS** | **6884 B** | **2143 B** | **9027 B** | **-2702 B (-23.0%)** |
 
 ---
 

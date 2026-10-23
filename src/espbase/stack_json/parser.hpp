@@ -11,7 +11,7 @@ namespace sjson {
 
 class ParseNodeBase {
  protected:
-  const PathBase* path_ptr_ = nullptr;
+  PathBase path_{};
   bool is_set_ = false;
   bool is_null_ = false;
   bool is_catch_all_ = false;
@@ -21,7 +21,7 @@ class ParseNodeBase {
  public:
   virtual ~ParseNodeBase() = default;
 
-  const PathBase& path() const { return *path_ptr_; }
+  const PathBase& path() const { return path_; }
   // Whether this node is a catch-all (matches any path). Used for dynamic nodes.
   bool is_catch_all() const { return is_catch_all_; }
 
@@ -55,17 +55,17 @@ class ParseNodeBaseT : public ParseNodeBase {
 
 template <typename PathT, typename TargetT>
 class BindNode : public ParseNodeBaseT<TargetT> {
-  PathT path_;
+  PathT static_path_;
 
  public:
   static constexpr std::size_t static_depth = PathT::static_depth;
 
   template <typename P>
   explicit constexpr BindNode(P&& p, TargetT& t)
-      : ParseNodeBaseT<TargetT>(t), path_(std::forward<P>(p)) {}
+      : ParseNodeBaseT<TargetT>(t), static_path_(std::forward<P>(p)) {}
 
   ParseNodeBase* init_node() {
-    this->path_ptr_ = &path_;
+    this->path_ = static_path_;
     return this;
   }
 };
@@ -122,30 +122,25 @@ class DynamicNodeBase : public ParseNodeBase {
 
 template <typename PathT>
 class DynamicNode : public DynamicNodeBase {
-  PathT path_;
+  PathT static_path_;
 
  public:
   static constexpr std::size_t static_depth = PathT::static_depth;
   template <typename P>
-  explicit DynamicNode(P&& p) : DynamicNodeBase(false), path_(std::forward<P>(p)) {}
+  explicit DynamicNode(P&& p) : DynamicNodeBase(false), static_path_(std::forward<P>(p)) {}
 
   ParseNodeBase* init_node() {
-    this->path_ptr_ = &path_;
+    this->path_ = static_path_;
     return this;
   }
 };
 
 class UnknownBindNodeBase : public DynamicNodeBase {
-  static inline StaticPath<0> dummy{};
-
  public:
   static constexpr std::size_t static_depth = 0;
-  UnknownBindNodeBase() : DynamicNodeBase(true) {
-    this->path_ptr_ = &dummy;
-  }
+  UnknownBindNodeBase() : DynamicNodeBase(true) {}
 
   ParseNodeBase* init_node() {
-    this->path_ptr_ = &dummy;
     return this;
   }
 };
