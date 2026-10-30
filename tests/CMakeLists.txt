@@ -42,6 +42,9 @@ include(GoogleTest)
 gtest_discover_tests(espbase_tests)
 
 # --- stack_json Codegen & Assembly Analysis Target ---
+if(NOT Python3_EXECUTABLE AND EXISTS "C:/msys64/clang64/bin/python.exe")
+    set(Python3_EXECUTABLE "C:/msys64/clang64/bin/python.exe" CACHE FILEPATH "Python 3 interpreter")
+endif()
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 add_custom_target(stack_json_codegen
@@ -55,5 +58,34 @@ add_custom_target(stack_json_codegen
 )
 
 add_custom_target(codegen_asm DEPENDS stack_json_codegen)
+
+# --- stack_json In-Memory Performance Benchmark ---
+add_executable(stack_json_perf
+    espbase/stack_json/perf/perf_main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/buffer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/document.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/parser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/pretty_buffer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/printer.cpp
+)
+
+target_include_directories(stack_json_perf PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../emulated/esp-idf/include
+)
+
+# Benchmarks require high optimization (-O3) regardless of CMAKE_BUILD_TYPE
+target_compile_options(stack_json_perf PRIVATE -O3 -DNDEBUG)
+
+add_custom_target(perf_bench
+    COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/espbase/stack_json/perf/run_perf.py"
+            --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
+            --mb 100
+    DEPENDS stack_json_perf
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    COMMENT "Running stack_json in-memory performance benchmark (100 MB per workload)..."
+    USES_TERMINAL
+)
 
 
