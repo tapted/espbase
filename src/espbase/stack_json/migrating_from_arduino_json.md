@@ -96,6 +96,24 @@ obj["id"] = 1;</pre>
       </td>
     </tr>
     <tr>
+      <td><strong>Streaming Arrays</strong><br><em>(No array kept in RAM)</em></td>
+      <td>
+<pre lang="cpp">JsonArray arr = doc.createNestedArray("readings");
+while (sensor.has_data()) {
+  arr.add(sensor.read()); // Heap allocation
+}</pre>
+      </td>
+      <td>
+<pre lang="cpp">stack_json(
+  node("readings", stream_array([&](auto& out) {
+    while (sensor.has_data()) {
+      out.emit(sensor.read()); // Zero heap!
+    }
+  }))
+);</pre>
+      </td>
+    </tr>
+    <tr>
       <td><strong>Conditional Keys</strong><br><em>(Omit if false)</em></td>
       <td>
 <pre lang="cpp">if (has_color) {

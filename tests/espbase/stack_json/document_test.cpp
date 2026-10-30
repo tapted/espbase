@@ -371,3 +371,72 @@ TEST(NodeIfTest, DanglingReferenceTrap) {
   // garbage memory instead of "safe_data".
   EXPECT_EQ(buffer.view(), R"({"key1":"safe_data"})");
 }
+
+TEST(StreamArrayTest, TopLevelArray) {
+  auto arr = stream_array([&](auto& out) {
+    out.emit(10);
+    out.emit(20);
+    out.emit(30);
+  });
+  StackBuffer<64> buffer;
+  arr.emit(buffer);
+  EXPECT_EQ(buffer.view(), "[10,20,30]");
+}
+
+TEST(StreamArrayTest, FunctionCallSyntax) {
+  auto arr = stream_array([&](auto& out) {
+    out("a");
+    out("b");
+    out("c");
+  });
+  StackBuffer<64> buffer;
+  arr.emit(buffer);
+  EXPECT_EQ(buffer.view(), R"(["a","b","c"])");
+}
+
+TEST(StreamArrayTest, NestedInObject) {
+  auto doc = stack_json(node("device", "puck"),  //
+                        node("values", stream_array([&](auto& out) {
+                               for (int i = 1; i <= 3; ++i) {
+                                 out.emit(i * 10);
+                               }
+                             })));
+  StackBuffer<128> buffer;
+  doc.emit(buffer);
+  EXPECT_EQ(buffer.view(), R"({"device":"puck","values":[10,20,30]})");
+}
+
+TEST(StreamArrayTest, InlineCallbackSyntax) {
+  auto doc = stack_json(node("status", "ok"),  //
+                        node("items", [&](ArrayEmitter& out) {
+                          out.emit("alpha");
+                          out.emit("beta");
+                        }));
+  StackBuffer<128> buffer;
+  doc.emit(buffer);
+  EXPECT_EQ(buffer.view(), R"({"status":"ok","items":["alpha","beta"]})");
+}
+
+TEST(StreamArrayTest, ArrayOfObjects) {
+  auto doc = stack_json(node("sensors", stream_array([&](auto& out) {
+                               out.emit(stack_json(node("id", 1), node("val", 22.5)));
+                               out.emit(stack_json(node("id", 2), node("val", 55.0)));
+                             })));
+  StackBuffer<128> buffer;
+  doc.emit(buffer);
+  EXPECT_EQ(buffer.view(), R"({"sensors":[{"id":1,"val":22.5},{"id":2,"val":55}]})");
+}
+
+TEST(StreamArrayTest, EarlyTerminationOnBufferFull) {
+  StackBuffer<25> small_buffer;  // Fixed small capacity
+  int attempted_count = 0;
+  auto arr = stream_array([&](auto& out) {
+    for (int i = 0; i < 50; ++i) {
+      attempted_count++;
+      if (!out.emit("long_string_payload")) break;
+    }
+  });
+  arr.emit(small_buffer);
+  EXPECT_TRUE(small_buffer.bad());
+  EXPECT_LT(attempted_count, 50);
+}

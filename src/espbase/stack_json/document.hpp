@@ -39,9 +39,7 @@ class Document {
     }
   }
 
-  size_t emit(Buffer& buffer) {
-    return emit_value(buffer);
-  }
+  size_t emit(Buffer& buffer) { return emit_value(buffer); }
 };
 
 template <typename... Elements>
@@ -97,7 +95,7 @@ template <typename Container>
 auto span_array(Container& c) {
   // Deduce the element type by looking at what std::data() returns
   using ElementT = std::remove_pointer_t<decltype(std::data(c))>;
-  
+
   // Construct the span directly and pass it to the document
   return SpanArrayDocument<ElementT>(std::span<ElementT>(std::data(c), std::size(c)));
 }
@@ -111,6 +109,33 @@ auto span_array(std::span<ElementT> s) {
 template <typename... Elements>
 auto stack_array(Elements&&... elems) {
   return ArrayDocument<Elements...>(std::forward<Elements>(elems)...);
+}
+
+template <typename Callback>
+class StreamArrayDocument {
+  Callback cb_;
+
+ public:
+  template <typename C>
+  explicit StreamArrayDocument(C&& cb) : cb_(std::forward<C>(cb)) {}
+
+  void emit_value(Buffer& buffer) {
+    buffer.write("[");
+    ArrayEmitter emitter(buffer);
+    cb_(emitter);
+    buffer.write("]");
+  }
+
+  size_t emit(Buffer& buffer) {
+    size_t before = buffer.length();
+    emit_value(buffer);
+    return buffer.length() - before;
+  }
+};
+
+template <typename Callback>
+auto stream_array(Callback&& cb) {
+  return StreamArrayDocument<std::decay_t<Callback>>(std::forward<Callback>(cb));
 }
 
 template <typename... Nodes>

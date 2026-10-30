@@ -91,7 +91,8 @@ struct PrimitivesWorkload {
   static constexpr const char* name = "primitives";
   static constexpr const char* description = "Integers & Booleans (id, timestamp, battery, flags, active, count)";
 
-  static void build_one(Buffer& buf, std::size_t i) {
+  template <typename Out>
+  static void emit_item(Out& out, std::size_t i) {
     uint32_t id = static_cast<uint32_t>(1000000 + i);
     uint64_t ts = 1712345678900ULL + i;
     int battery = static_cast<int>(100 - (i % 100));
@@ -99,15 +100,14 @@ struct PrimitivesWorkload {
     bool active = (i % 2 == 0);
     int count = -static_cast<int>(i % 500);
 
-    auto doc = stack_json(
+    out.emit(stack_json(
         node("id", id),
         node("timestamp", ts),
         node("battery", battery),
         node("flags", flags),
         node("active", active),
         node("count", count)
-    );
-    doc.emit(buf);
+    ));
   }
 
   static bool parse_all(std::string_view json, std::size_t expected_count) {
@@ -152,7 +152,8 @@ struct FloatsWorkload {
   static constexpr const char* name = "floats";
   static constexpr const char* description = "GPS & IMU Telemetry (lat, lon, alt, speed, temp, ax, ay, az)";
 
-  static void build_one(Buffer& buf, std::size_t i) {
+  template <typename Out>
+  static void emit_item(Out& out, std::size_t i) {
     double lat = -33.868820 + (i * 0.00001);
     double lon = 151.209296 + (i * 0.00001);
     float alt = 42.15f + static_cast<float>(i % 1000) * 0.1f;
@@ -162,7 +163,7 @@ struct FloatsWorkload {
     float ay = -0.981f;
     float az = 0.045f;
 
-    auto doc = stack_json(
+    out.emit(stack_json(
         node("lat", lat),
         node("lon", lon),
         node("alt", alt),
@@ -171,8 +172,7 @@ struct FloatsWorkload {
         node("ax", ax),
         node("ay", ay),
         node("az", az)
-    );
-    doc.emit(buf);
+    ));
   }
 
   static bool parse_all(std::string_view json, std::size_t expected_count) {
@@ -215,7 +215,8 @@ struct StringsWorkload {
   static constexpr const char* name = "strings";
   static constexpr const char* description = "Text & Escaped Strings (level, source, message, url, tag)";
 
-  static void build_one(Buffer& buf, std::size_t i) {
+  template <typename Out>
+  static void emit_item(Out& out, std::size_t i) {
     static constexpr const char* levels[] = {"INFO", "WARN", "DEBUG", "ERROR"};
     const char* lvl = levels[i % 4];
     const char* src = "network_task";
@@ -223,14 +224,13 @@ struct StringsWorkload {
     const char* url = "https://api.espuck.io/v1/telemetry/report";
     const char* tag = "firmware_v2";
 
-    auto doc = stack_json(
+    out.emit(stack_json(
         node("level", lvl),
         node("source", src),
         node("message", msg),
         node("url", url),
         node("tag", tag)
-    );
-    doc.emit(buf);
+    ));
   }
 
   static bool parse_all(std::string_view json, std::size_t expected_count) {
@@ -269,7 +269,8 @@ struct NestedPathsWorkload {
   static constexpr const char* name = "nested_paths";
   static constexpr const char* description = "Multi-level Tree Paths (device.info.id/name, device.net.wifi.ssid/ip/rssi)";
 
-  static void build_one(Buffer& buf, std::size_t i) {
+  template <typename Out>
+  static void emit_item(Out& out, std::size_t i) {
     auto dev = path("device");
     auto info = dev("info");
     auto wifi = dev("net", "wifi");
@@ -280,14 +281,13 @@ struct NestedPathsWorkload {
     const char* ip = "192.168.1.100";
     int rssi = -65 - static_cast<int>(i % 30);
 
-    auto doc = stack_json(
+    out.emit(stack_json(
         node(info("id"), id),
         node(info("name"), name),
         node(wifi("ssid"), ssid),
         node(wifi("ip"), ip),
         node(wifi("rssi"), rssi)
-    );
-    doc.emit(buf);
+    ));
   }
 
   static bool parse_all(std::string_view json, std::size_t expected_count) {
@@ -334,7 +334,8 @@ struct MixedIotWorkload {
   static constexpr const char* name = "mixed_iot";
   static constexpr const char* description = "Realistic IoT Composite (id, name, active, sensors.temp/hum, status.code/msg, bat)";
 
-  static void build_one(Buffer& buf, std::size_t i) {
+  template <typename Out>
+  static void emit_item(Out& out, std::size_t i) {
     auto sensors = path("sensors");
     auto status = path("status");
 
@@ -347,7 +348,7 @@ struct MixedIotWorkload {
     const char* msg = "OK";
     int bat = static_cast<int>(100 - (i % 100));
 
-    auto doc = stack_json(
+    out.emit(stack_json(
         node("id", id),
         node("name", name),
         node("active", active),
@@ -356,8 +357,7 @@ struct MixedIotWorkload {
         node(status("code"), code),
         node(status("msg"), msg),
         node("battery", bat)
-    );
-    doc.emit(buf);
+    ));
   }
 
   static bool parse_all(std::string_view json, std::size_t expected_count) {
@@ -416,16 +416,19 @@ BenchmarkResult run_benchmark(std::size_t target_bytes) {
   FastBenchmarkBuffer buf(alloc_size);
 
   // --- BUILD PHASE ---
+  // Uses stack_json's native stream_array to emit all objects declaratively
   auto t_build_start = std::chrono::high_resolution_clock::now();
 
-  buf.write("{\"items\":[");
   std::size_t obj_count = 0;
-  while (buf.length() < target_bytes) {
-    if (obj_count > 0) buf.write(",");
-    Workload::build_one(buf, obj_count);
-    obj_count++;
-  }
-  buf.write("]}");
+  auto root_doc = stack_json(
+      node("items", stream_array([&](auto& out) {
+        while (buf.length() < target_bytes) {
+          Workload::emit_item(out, obj_count);
+          obj_count++;
+        }
+      }))
+  );
+  root_doc.emit(buf);
   buf.finalize();
 
   auto t_build_end = std::chrono::high_resolution_clock::now();

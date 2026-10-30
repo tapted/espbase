@@ -1,6 +1,21 @@
 #include "espbase/stack_json/document.hpp"
 
+#include "espbase/stack_json/array_emitter.hpp"
+
 namespace sjson {
+
+bool ArrayEmitter::before_element() {
+  if (buffer_.bad()) return false;
+  if (!first_) {
+    return buffer_.write(",") != 0;
+  }
+  first_ = false;
+  return true;
+}
+
+bool ArrayEmitter::ok() const {
+  return !buffer_.bad();
+}
 
 static bool emit_level(Buffer& buffer, std::span<NodeBase*> nodes, const PathBase& current_path) {
   bool is_first_child = true;

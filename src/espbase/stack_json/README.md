@@ -91,6 +91,48 @@ auto doc = stack_json(
 
 ```
 
+### Streaming Arrays (Generators, Loops, and Callbacks)
+
+When you need to emit an array whose elements are yielded on the fly (from a sensor loop, generator, or database cursor) without holding all elements in memory simultaneously, use `stream_array(...)` or an inline `ArrayEmitter` callback:
+
+```cpp
+// 1. stream_array with a generator or loop
+auto doc = stack_json(
+    node("device", "puck_01"),
+    node("readings", stream_array([&](auto& stream) {
+        for (int i = 0; i < 100; ++i) {
+            // Emits: 0, 10, 20... with automatic comma separation
+            stream.emit(i * 10);
+        }
+    }))
+);
+
+// 2. Inline callback syntax (analogous to the printf string callback)
+auto status_doc = stack_json(
+    node("status", "ok"),
+    node("items", [&](ArrayEmitter& stream) {
+        stream.emit("alpha");
+        stream.emit("beta");
+    })
+);
+
+// 3. Streaming an array of nested StackJson objects
+auto telemetry = stream_array([&](auto& stream) {
+    while (sensor.has_data()) {
+        auto sample = sensor.read();
+        // Emits: [{"temp": 22.5, "hum": 55.0}, ...]
+        if (!stream.emit(stack_json(node("temp", sample.temp), node("hum", sample.hum)))) {
+            break; // Buffer is full! Early termination prevents wasted work.
+        }
+    }
+});
+telemetry.emit(buffer);
+```
+
+- **Zero Memory Overhead:** Only one element is materialized at a time; comma separators `,` are inserted automatically.
+- **Early Exit on Buffer Overflow:** `stream.emit(...)` returns `false` if a fixed-size buffer fills up, allowing loops to break immediately.
+- **Top-Level or Nested:** Use as a root document (`stream_array(...).emit(buf)`) or as the value of any `node("key", ...)`.
+
 ### Zero-Copy Composition (Perfect Forwarding)
 
 Because StackJson uses perfect forwarding, assembling a master document from smaller components consumes almost no stack space. The master document simply holds references to the local components.
