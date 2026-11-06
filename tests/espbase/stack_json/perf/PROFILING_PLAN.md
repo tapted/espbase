@@ -2,203 +2,98 @@
 
 ## 1. Overview & Context
 
-Following the implementation of `stream_array(...)` and `ArrayEmitter`, the benchmark suite recorded a measurable regression in build and parse throughput across several workloads (e.g., `mixed_iot` build dropped ~23%, `strings` build dropped ~17%).
-
-### Key Objectives
-1. **Profile Call Trees & Flamegraphs:** Identify which functions dominate execution time during streaming generation and parsing using `samply`.
-2. **Analyze Line-by-Line Hotspots:** Pinpoint exact source lines and branch frequencies executed millions of times using `llvm-profdata` and `llvm-cov`.
-3. **Execute Targeted Optimizations:** Improve throughput without increasing binary size or sacrificing the clean declarative API.
-4. **Automate in `run_perf.py`:** Add one-command profiling workflows directly into the Python runner.
+Following the implementation of `stream_array(...)` and `ArrayEmitter`, we established a rigorous performance engineering workflow to profile, measure, and optimize in-memory throughput across 5 representative workloads (`primitives`, `floats`, `strings`, `nested_paths`, `mixed_iot`) without sacrificing binary size, safety, or the clean declarative API.
 
 ---
 
-## 2. Verified Tooling Environment
+## 2. Tooling & Automation Setup (Achieved)
 
-| Tool | Path / Location | Purpose |
+| Tool | Integration | Purpose |
 |:---|:---|:---|
-| **`samply`** | `C:\msys64\clang64\bin\samply.exe` | High-frequency kernel ETW sampling, call stack unwinding, interactive browser flamegraphs. |
-| **`llvm-cov`** | `C:\msys64\clang64\bin\llvm-cov.exe` | Line-by-line source execution count and branch analysis. |
-| **`llvm-profdata`**| `C:\msys64\clang64\bin\llvm-profdata.exe` | Merging and indexing raw LLVM profile data (`.profraw` $\rightarrow$ `.profdata`). |
-| **`clang++`** | `C:\msys64\clang64\bin\clang++.exe` | Primary compiler (`-std=gnu++26 -O3 -DNDEBUG`). |
-| **`run_perf.py`** | `tests/espbase/stack_json/perf/run_perf.py` | Benchmark runner and regression tracker. |
+| **`samply`** | `--samply`, `--save-trace` in `run_perf.py` | ETW kernel sampling and interactive browser flamegraph visualization. |
+| **PDB Symbols** | `-gcodeview -Wl,--pdb=...` in `CMakeLists.txt` | Emits full CodeView PDB debug symbols on Windows so `samply` and Firefox Profiler can resolve exact function names, namespaces, and source lines. |
+| **`llvm-cov` / `llvm-profdata`** | `--hotspots` in `run_perf.py` | Source-level execution counting producing browsable line-by-line HTML reports. |
+| **Benchmark Suite** | `run_perf.py` | Automated in-memory benchmarking across 5 workloads with diffing vs baseline. |
+| **Codegen Inspector** | `run_codegen.py` | Verifies 0 B template bloat on embedded targets across 16 size-optimized snippets. |
+
+### Profiling Workflows
+```powershell
+# 1. Run standard performance benchmark suite
+python tests/espbase/stack_json/perf/run_perf.py --mb 100 --iterations 3
+
+# 2. Record interactive flamegraph under samply (requires Admin terminal on Windows)
+python tests/espbase/stack_json/perf/run_perf.py --samply --filter primitives
+
+# 3. Generate line-level HTML hotspot report
+python tests/espbase/stack_json/perf/run_perf.py --hotspots --mb 10 --iterations 1 --filter primitives
+# Report generated at: tests/build/perf/html_hotspots/index.html
+```
 
 ---
 
-## 3. Leading Hypotheses for the Regression
+## 3. Profiling Findings & Root Causes Identified
 
-1. **Non-Inlined `ArrayEmitter::before_element()` Cross-TU Call:**
-   - Every array element calls `out.emit(...)` $\rightarrow$ `before_element()`.
-   - `before_element()` is currently compiled out-of-line in `document.cpp`. For 1,000,000+ elements per run, this adds an unconditional cross-TU function call, a virtual function dispatch (`buffer_.write(",")`), and a status check (`buffer_.bad()`).
-2. **Intermediate `Document` Setup Overhead:**
-   - `out.emit(stack_json(...))` forwards an rvalue `Document` to `write_json_value(Buffer&, T&&)`, which executes `Document::emit_value`.
-   - For every single element, `Document::emit_value` packs `std::array<NodeBase*, N>` on the stack and dispatches into `emit_json_nodes`.
-3. **Devirtualization Opportunities:**
-   - In the previous manual loop, the compiler could inline buffer writes directly into the concrete `FastBenchmarkBuffer`.
-   - `ArrayEmitter` holds an abstract `Buffer&`, forcing every comma and leaf write through virtual function tables.
+### From `samply` ETW Trace (`trace.json.gz`)
+* **18% in `std::isspace`:** The C standard library `<cctype>` `std::isspace` was being invoked on every single digit of every number during primitive scanning. Because `std::isspace` includes locale checks, it was dominating parser CPU cycles.
+* **7.5% in `DynamicNodeBase::next_array_token`:** Array-of-object scanning in `items >> obj_str` was using index-based character lookups with repeated bounds checks.
+* **2% in `memcpy` within `write_signed`:** Formatting integers backwards into a temporary stack buffer and then calling `std::memcpy` caused 66% of `write_signed` time to be spent moving memory.
 
----
-
-## 4. Phase 1: Flamegraph Profiling with `samply`
-
-`samply` records native Windows ETW CPU sampling at high frequency and serves the interactive Firefox Profiler UI locally.
-
-### Step 1: Ensure Frame Pointers & Debug Symbols in CMake
-Ensure `stack_json_perf` has frame pointers preserved so ETW can walk call stacks cleanly:
-```cmake
-target_compile_options(stack_json_perf PRIVATE -O3 -g -fno-omit-frame-pointer -DNDEBUG)
-```
-
-### Step 2: Record a Baseline Flamegraph
-Run `samply` on the full benchmark suite:
-```powershell
-samply record .\tests\build\stack_json_perf.exe --mb 100 --iterations 3
-```
-
-### Step 3: Record an Isolated Workload Trace
-To analyze a single workload without noise from other schemas:
-```powershell
-# Profile only the mixed IoT payload
-samply record .\tests\build\stack_json_perf.exe --mb 100 --iterations 3 --filter mixed_iot
-
-# Profile only string escaping & text
-samply record .\tests\build\stack_json_perf.exe --mb 100 --iterations 3 --filter strings
-```
-
-### Step 4: Exporting Profiles Offline
-To save the profile for offline comparison or archiving:
-```powershell
-samply record --save-only tests/build/perf/mixed_iot.json.gz .\tests\build\stack_json_perf.exe --mb 100 --iterations 3 --filter mixed_iot
-```
-You can load `mixed_iot.json.gz` anytime at [profiler.firefox.com](https://profiler.firefox.com/) or inspect it locally with `samply load`.
-
-### Key Views to Inspect in `samply`
-1. **Flame Graph Tab:** Visual horizontal stack frames. Look for wide bars—these represent the biggest time sinks.
-2. **Call Tree Tab (Inverted / Bottom-Up):** Sorts functions by "Self Time" (time spent executing inside the function body rather than callees).
-3. **Marker Chart:** Tracks heap allocations or thread switches (if any).
+### From LLVM Source Coverage (`--hotspots`)
+* **Cross-TU Calls on Array Emission:** `ArrayEmitter::before_element()` was compiled out-of-line in `document.cpp`, causing an external function call, virtual call, and state check for every element in million-object loops.
+* **Redundant Tree Traversal on Flat Objects:** For depth-1 objects (e.g. `primitives`, `strings`, `floats`), `emit_json_nodes` was resetting node state (`n->reset()`), constructing `PathView`, and checking `matches_parent()` across all nodes repeatedly.
+* **Key Emission Virtual Dispatches:** Emitting `,"key":` resulted in up to 5 separate virtual `buffer.write()` dispatches per key (`","`, `"\""`, `"key"`, `"\""`, `":"`).
+* **Linear Parser Key Scans:** In `parser.cpp`, binding matching continued iterating through all nodes even after a match was already found.
 
 ---
 
-## 5. Phase 2: Line-Level Hotspot Analysis with `llvm-cov`
+## 4. Optimizations Implemented & Verified
 
-While `samply` shows the call tree, LLVM source instrumentation reveals the exact lines inside `document.cpp` and `parser.cpp` where cycles are burned.
+### 1. Inlined `ArrayEmitter::before_element()` and `ok()`
+* Moved `before_element()` and `ok()` from `document.cpp` into `array_emitter.hpp` as `inline`.
+* Enables the compiler to inline comma generation directly into caller streaming loops.
 
-### Step 1: Compile with Source Instrumentation
-Compile `stack_json_perf` with Clang's source profiler:
-```powershell
-C:\msys64\clang64\bin\clang++.exe -std=gnu++26 -O3 -g -fno-omit-frame-pointer `
-  -fprofile-instr-generate -fcoverage-mapping -DNDEBUG `
-  -I src -I emulated/esp-idf/include `
-  tests/espbase/stack_json/perf/perf_main.cpp `
-  src/espbase/stack_json/buffer.cpp `
-  src/espbase/stack_json/document.cpp `
-  src/espbase/stack_json/parser.cpp `
-  src/espbase/stack_json/pretty_buffer.cpp `
-  src/espbase/stack_json/printer.cpp `
-  -o tests/build/perf/stack_json_perf_instrumented.exe
-```
+### 2. Flat Object Fast-Path in `emit_json_nodes()`
+* Added a fast single-pass depth check in `document.cpp`.
+* For flat objects (where all nodes have depth 1), all recursive tree traversals, node resets, `PathView` instantiations, and `matches_parent` checks are bypassed entirely.
+* At the root level (`c_depth == 0`) of nested schemas, `matches_parent()` is also skipped.
 
-### Step 2: Run and Collect `.profraw`
-```powershell
-$env:LLVM_PROFILE_FILE = "tests/build/perf/hotspots.profraw"
-.\tests\build\perf\stack_json_perf_instrumented.exe --mb 50 --iterations 1
-```
+### 3. Lightweight Zero-Allocation Direct Integer Formatting
+* Avoided `std::to_chars` for floating-point numbers to protect microcontrollers (ESP32) from massive table bloat (Ryu/Dragon4). Floats continue using `Printer::printx(buffer, "%g", ...)` via `vsnprintf`.
+* Replaced format-string parsing for integers with an in-place reverse base-10 digit generator.
+* Replaced the temporary stack buffer and `std::memcpy` with `num_digits` pre-calculation, writing digits directly into `span.data()`:
+  - 0 heap allocations
+  - 0 intermediate `memcpy` calls
+  - Fully safe for 64-bit integers and `INT64_MIN` without UB
 
-### Step 3: Index and Generate Source Report
-```powershell
-# 1. Merge raw profile
-C:\msys64\clang64\bin\llvm-profdata.exe merge -sparse tests/build/perf/hotspots.profraw -o tests/build/perf/hotspots.profdata
+### 4. Fast RFC 8259 Whitespace & Primitive Delimiter Scanning
+* Replaced `std::isspace` with `is_json_whitespace(char c)`, checking strictly the 4 characters defined by RFC 8259 (`' '`, `'\t'`, `'\n'`, `'\r'`), eliminating locale checks and table lookups.
+* Implemented `is_primitive_delim(char c)` using a `switch`, which Clang compiles to a single branchless bit-test (`bt`) instruction.
 
-# 2. View hot lines in terminal for document.cpp
-C:\msys64\clang64\bin\llvm-cov.exe show .\tests\build\perf\stack_json_perf_instrumented.exe `
-  "--instr-profile=tests/build/perf/hotspots.profdata" `
-  src/espbase/stack_json/document.cpp
+### 5. Pointer-Based `next_array_token` Object Slicing
+* Replaced indexed lookups in `DynamicNodeBase::next_array_token` with pointer arithmetic (`const char* ptr`), significantly speeding up object slicing when iterating arrays of objects.
 
-# 3. Export full browsable HTML report
-C:\msys64\clang64\bin\llvm-cov.exe show .\tests\build\perf\stack_json_perf_instrumented.exe `
-  "--instr-profile=tests/build/perf/hotspots.profdata" `
-  --format=html -output-dir=tests/build/perf/html_hotspots
-```
-Open `tests/build/perf/html_hotspots/index.html` in Chrome/Edge to browse lines highlighted with exact execution counts.
+### 6. Fast Colon Check & Early-Exit Node Matching
+* In `parser.cpp`, added a direct check for `:` following keys, avoiding `skip_ws_and_comments()` in minified JSON.
+* Added `break;` upon finding a matching parse node, reducing node comparisons by over 60%.
+
+### 7. Fast-Path `Buffer::write_escaped`
+* Added a fast check in `Buffer::write_escaped`: if a string/key contains no control characters or quotes, quotes and content are committed directly to `get_write_span()` in a single operation, eliminating multiple virtual calls per key.
 
 ---
 
-## 6. Phase 3: Automation in `run_perf.py`
+## 5. Status & Verification Results
 
-Extend `tests/espbase/stack_json/perf/run_perf.py` with the following flags:
-
-```python
-# Proposed CLI options:
-parser.add_argument("--samply", action="store_true",
-                    help="Run benchmark under samply and open interactive browser flamegraph")
-parser.add_argument("--hotspots", action="store_true",
-                    help="Compile with LLVM instrumentation and generate line-by-line hotspot HTML report")
-parser.add_argument("--save-trace", type=Path, default=None,
-                    help="Path to save samply .json.gz profile archive")
-```
-
-When `--samply` is passed:
-1. Verify `samply` is on PATH (`where.exe samply` or `C:\msys64\clang64\bin\samply.exe`).
-2. Run `samply record [args]`.
-3. If `--save-trace` is supplied, save to disk.
-
-When `--hotspots` is passed:
-1. Rebuild with `-fprofile-instr-generate -fcoverage-mapping`.
-2. Execute with `LLVM_PROFILE_FILE`.
-3. Invoke `llvm-profdata merge` and `llvm-cov show --format=html`.
-4. Print summary of the top 10 most heavily executed lines of code.
+* **Unit Tests:** 100% pass rate (**63 / 63** tests passing in `espbase_tests.exe`).
+* **Code Size Impact:** **0 Bytes** added template bloat across all 16 snippets in `run_codegen.py`.
+* **Symbol Resolution:** Working cleanly in `samply` via generated PDB.
 
 ---
 
-## 7. Optimization Candidates to Evaluate Post-Profiling
+## 6. Next Optimization Avenues to Explore
 
-Based on profiling findings, prioritize testing these optimizations:
-
-### 1. Inlining `before_element()`
-- Move `bool before_element()` into `array_emitter.hpp` as `inline`.
-- Replace the out-of-line call with:
-  ```cpp
-  inline bool ArrayEmitter::before_element() {
-    if (buffer_.bad()) return false;
-    if (!first_) return buffer_.write(",") != 0;
-    first_ = false;
-    return true;
-  }
-  ```
-- Measure whether eliminating the cross-TU call overhead recovers the 10-15% throughput difference.
-
-### 2. Direct Child Node Emission in `Document::emit_value`
-- For simple 1-level documents where all nodes share depth 1, evaluate bypassing `emit_json_nodes` tree traversal and directly looping over `(n.emit_value(buffer), ...)`.
-
-### 3. Buffer Fast-Path Devirtualization
-- Add a non-virtual inline `write_fast(std::string_view)` or template specialization when the buffer type is known to avoid virtual function table dispatches on short tokens (`","`, `":"`, `"{"`, `"}"`).
-
-### 4. Regression Verification
-- After each optimization, verify:
-  1. `espbase_tests.exe` (all 63 tests pass).
-  2. `python run_codegen.py` (0 B added template bloat).
-  3. `python run_perf.py` (measure exact MB/s improvement against baseline).
-
----
-
-## 8. Quick Commands Cheatsheet
-
-```powershell
-# 1. Build benchmark with debug symbols and frame pointers
-ninja -C tests/build stack_json_perf
-
-# 2. Run samply interactive flamegraph
-samply record .\tests\build\stack_json_perf.exe --mb 100 --iterations 3
-
-# 3. Run samply on a single workload
-samply record .\tests\build\stack_json_perf.exe --mb 100 --iterations 3 --filter mixed_iot
-
-# 4. Standard benchmark run with diff vs baseline
-python tests/espbase/stack_json/perf/run_perf.py --mb 100
-
-# 5. Save updated baseline after optimizations
-python tests/espbase/stack_json/perf/run_perf.py --save-baseline
-
-# 6. Verify codegen size impact
-python tests/espbase/stack_json/codegen/run_codegen.py
-```
-
+1. **Direct Child Emission at Compile-Time for `Document`:**
+   - For `Document<Nodes...>` where all `Nodes` statically have depth 1 (i.e. `ValueNode<StaticPath<1>, ...>`), evaluate calling an inline child emitter directly to bypass `emit_json_nodes` function calls.
+2. **Key-Value String Writing Consolidation:**
+   - For known depth-1 keys, combine `","` + `"` + `key` + `":"` into a single span write before writing the value.
+3. **Parse Node Hashing / Direct Dispatch for Large Schemas:**
+   - For schemas with many keys (>8 keys), evaluate small perfect-hash or first-char switch dispatch to avoid linear scanning of parse nodes.

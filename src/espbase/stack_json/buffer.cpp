@@ -1,6 +1,7 @@
 #include "espbase/stack_json/buffer.hpp"
 
 #include <cstdio>
+#include <cstring>
 
 namespace sjson {
 
@@ -11,7 +12,33 @@ void Buffer::commit(std::size_t /*count*/) {
 }
 
 size_t Buffer::write_escaped(std::string_view str) {
+  if (bad()) return 0;
   const size_t before = length();
+
+  // Fast path: If no character needs escaping, write quotes and content in one operation
+  bool needs_escaping = false;
+  for (char ch : str) {
+    uint8_t c = static_cast<uint8_t>(ch);
+    if (c == '"' || c == '\\' || c <= 0x1F) {
+      needs_escaping = true;
+      break;
+    }
+  }
+
+  if (!needs_escaping) {
+    std::span<char> span = get_write_span();
+    std::size_t total = str.size() + 2;
+    if (total <= span.size()) {
+      span[0] = '"';
+      if (!str.empty()) {
+        std::memcpy(span.data() + 1, str.data(), str.size());
+      }
+      span[total - 1] = '"';
+      commit(total);
+      return total;
+    }
+  }
+
   if (write("\"") == 0) return 0;  // Open quote
 
   std::size_t start = 0;

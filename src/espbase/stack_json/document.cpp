@@ -87,27 +87,59 @@ size_t emit_json_nodes(Buffer& buffer, std::span<NodeBase*> nodes) {
   return buffer.length() - before;
 }
 
+static inline constexpr std::size_t num_digits_u32(uint32_t x) {
+  if (x < 10) return 1;
+  if (x < 100) return 2;
+  if (x < 1000) return 3;
+  if (x < 10000) return 4;
+  if (x < 100000) return 5;
+  if (x < 1000000) return 6;
+  if (x < 10000000) return 7;
+  if (x < 100000000) return 8;
+  if (x < 1000000000) return 9;
+  return 10;
+}
+
+static inline constexpr std::size_t num_digits_u64(uint64_t x) {
+  if (x <= 0xFFFFFFFFULL) {
+    return num_digits_u32(static_cast<uint32_t>(x));
+  }
+  if (x < 10000000000ULL) return 10;
+  if (x < 100000000000ULL) return 11;
+  if (x < 1000000000000ULL) return 12;
+  if (x < 10000000000000ULL) return 13;
+  if (x < 100000000000000ULL) return 14;
+  if (x < 1000000000000000ULL) return 15;
+  if (x < 10000000000000000ULL) return 16;
+  if (x < 100000000000000000ULL) return 17;
+  if (x < 1000000000000000000ULL) return 18;
+  if (x < 10000000000000000000ULL) return 19;
+  return 20;
+}
+
+template <typename UIntT>
+static inline constexpr std::size_t num_digits(UIntT x) {
+  if constexpr (sizeof(UIntT) <= 4) {
+    return num_digits_u32(static_cast<uint32_t>(x));
+  } else {
+    return num_digits_u64(static_cast<uint64_t>(x));
+  }
+}
+
 template <typename UIntT>
 static inline void write_unsigned(Buffer& buffer, UIntT value) {
   if (buffer.bad()) return;
   std::span<char> span = buffer.get_write_span();
-  if (span.empty()) {
-    buffer.fail();
-    return;
-  }
-  char temp[24];
-  char* p = temp + sizeof(temp);
-  do {
-    *--p = static_cast<char>('0' + (value % 10));
-    value /= 10;
-  } while (value > 0);
-
-  std::size_t len = (temp + sizeof(temp)) - p;
+  std::size_t len = num_digits(value);
   if (len > span.size()) {
     buffer.fail();
     return;
   }
-  std::memcpy(span.data(), p, len);
+  char* p = span.data() + len;
+  do {
+    *--p = static_cast<char>('0' + (value % 10));
+    value /= 10;
+  } while (value > 0);
   buffer.commit(len);
 }
 
@@ -115,30 +147,23 @@ template <typename IntT>
 static inline void write_signed(Buffer& buffer, IntT value) {
   if (buffer.bad()) return;
   std::span<char> span = buffer.get_write_span();
-  if (span.empty()) {
-    buffer.fail();
-    return;
-  }
   using UIntT = std::make_unsigned_t<IntT>;
-  char temp[24];
-  char* p = temp + sizeof(temp);
   bool neg = value < 0;
   UIntT uval = neg ? 0 - static_cast<UIntT>(value) : static_cast<UIntT>(value);
-  do {
-    *--p = static_cast<char>('0' + (uval % 10));
-    uval /= 10;
-  } while (uval > 0);
-
-  if (neg) {
-    *--p = '-';
-  }
-
-  std::size_t len = (temp + sizeof(temp)) - p;
+  std::size_t digits = num_digits(uval);
+  std::size_t len = digits + (neg ? 1 : 0);
   if (len > span.size()) {
     buffer.fail();
     return;
   }
-  std::memcpy(span.data(), p, len);
+  char* p = span.data() + len;
+  do {
+    *--p = static_cast<char>('0' + (uval % 10));
+    uval /= 10;
+  } while (uval > 0);
+  if (neg) {
+    span[0] = '-';
+  }
   buffer.commit(len);
 }
 

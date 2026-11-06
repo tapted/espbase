@@ -1,11 +1,31 @@
 #include "espbase/stack_json/parser.hpp"
 
-#include <cctype>
 #include <charconv>
 
 #include "espbase/stack_json/path.hpp"
 
 namespace sjson {
+
+static inline constexpr bool is_json_whitespace(char c) {
+  return c == ' ' || c == '\n' || c == '\r' || c == '\t';
+}
+
+static inline constexpr bool is_primitive_delim(char c) {
+  switch (c) {
+    case ' ':
+    case '\t':
+    case '\n':
+    case '\r':
+    case ',':
+    case '}':
+    case ']':
+    case '{':
+    case '[':
+      return true;
+    default:
+      return false;
+  }
+}
 
 void coerce_value(std::string_view raw_val, bool is_null, bool& target) {
   if (is_null) {
@@ -113,7 +133,7 @@ void DynamicNodeBase::assign(const PathBase&, std::string_view raw_val, bool is_
 
 std::string_view DynamicNodeBase::next_array_token(bool& is_str) {
   while (!iter_state_.empty() &&
-         (std::isspace(iter_state_.front()) || iter_state_.front() == ',')) {
+         (is_json_whitespace(iter_state_.front()) || iter_state_.front() == ',')) {
     iter_state_.remove_prefix(1);
   }
   if (iter_state_.empty() || iter_state_.front() == ']') return {};
@@ -136,33 +156,31 @@ std::string_view DynamicNodeBase::next_array_token(bool& is_str) {
       }
     }
   } else if (iter_state_.front() == '{' || iter_state_.front() == '[') {
+    const char* ptr = iter_state_.data();
+    const char* end_ptr = ptr + iter_state_.size();
     int depth = 0;
-    for (end = 0; end < iter_state_.size(); ++end) {
-      if (iter_state_[end] == '"') {
-        end++;
-        while (end < iter_state_.size()) {
-          if (iter_state_[end] == '\\') {
-            end++;
-            if (end < iter_state_.size()) end++;
-          } else if (iter_state_[end] == '"') {
+    while (ptr < end_ptr) {
+      char c = *ptr++;
+      if (c == '"') {
+        while (ptr < end_ptr) {
+          char sc = *ptr++;
+          if (sc == '\\') {
+            if (ptr < end_ptr) ptr++;
+          } else if (sc == '"') {
             break;
-          } else {
-            end++;
           }
         }
-      } else if (iter_state_[end] == '{' || iter_state_[end] == '[') {
+      } else if (c == '{' || c == '[') {
         depth++;
-      } else if (iter_state_[end] == '}' || iter_state_[end] == ']') {
-        depth--;
-        if (depth == 0) {
-          end++;
+      } else if (c == '}' || c == ']') {
+        if (--depth == 0) {
           break;
         }
       }
     }
+    end = static_cast<std::size_t>(ptr - iter_state_.data());
   } else {
-    while (end < iter_state_.size() && !std::isspace(iter_state_[end]) && iter_state_[end] != ',' &&
-           iter_state_[end] != ']') {
+    while (end < iter_state_.size() && !is_primitive_delim(iter_state_[end])) {
       end++;
     }
   }
@@ -274,7 +292,7 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
 
   auto skip_ws_and_comments = [&]() {
     while (i < json.size()) {
-      if (std::isspace(json[i])) {
+      if (is_json_whitespace(json[i])) {
         i++;
       }
       // Check for the start of a comment
@@ -392,38 +410,42 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
       std::string_view str_val = json.substr(start, i - start);
       if (i < json.size()) i++;
 
-      skip_ws_and_comments();
       if (i < json.size() && json[i] == ':') {
         current_key = str_val;
         i++;
       } else {
-        // Only evaluate bindings if we haven't exceeded our tracked path stack
-        if (depth < path_stack.size()) {
-          path_stack[depth] = current_key;
-          PathBase current_path(path_stack.data(), depth + 1);
-          bool matched = false;
-          ParseNodeBase* catch_all = nullptr;
-          for (auto* n : nodes) {
-            if (n->is_catch_all()) {
-              if (!current_key.empty()) catch_all = n;
-            } else if (n->path().matches_parent(current_path)) {
-              n->assign(current_path, str_val, true, false);
-              matched = true;
+        skip_ws_and_comments();
+        if (i < json.size() && json[i] == ':') {
+          current_key = str_val;
+          i++;
+        } else {
+          // Only evaluate bindings if we haven't exceeded our tracked path stack
+          if (depth < path_stack.size()) {
+            path_stack[depth] = current_key;
+            PathBase current_path(path_stack.data(), depth + 1);
+            bool matched = false;
+            ParseNodeBase* catch_all = nullptr;
+            for (auto* n : nodes) {
+              if (n->is_catch_all()) {
+                if (!current_key.empty()) catch_all = n;
+              } else if (n->path().matches_parent(current_path)) {
+                n->assign(current_path, str_val, true, false);
+                matched = true;
+                break;
+              }
+            }
+            if (!matched && catch_all) {
+              catch_all->assign(current_path, str_val, true, false);
             }
           }
-          if (!matched && catch_all) {
-            catch_all->assign(current_path, str_val, true, false);
-          }
+          current_key = "";  // Clear key so next array element doesn't reuse it
         }
-        current_key = "";  // Clear key so next array element doesn't reuse it
       }
     } else {
       // Must be a primitive value (number, true, false, null)
       std::size_t start = i;
 
-      // Include '[' and ']' in the delimiter list so primitive scanning stops cleanly
-      while (i < json.size() && !std::isspace(json[i]) && json[i] != ',' && json[i] != '}' &&
-             json[i] != ']' && json[i] != '{' && json[i] != '[') {
+      while (i < json.size() && !is_primitive_delim(json[i])) {
         i++;
       }
       std::string_view prim_val = json.substr(start, i - start);
@@ -440,6 +462,7 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
           } else if (n->path().matches_parent(current_path)) {
             n->assign(current_path, prim_val, false, is_null);
             matched = true;
+            break;
           }
         }
         if (!matched && catch_all) {
