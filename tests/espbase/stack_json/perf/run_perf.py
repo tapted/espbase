@@ -6,14 +6,19 @@ Executes the high-throughput stack_json in-memory benchmark executable across 5 
 payload workloads (Primitives, Floats, Strings, Nested Paths, Mixed IoT), tracking build/parse
 MB/s throughput and objects/second, with optional baseline saving and diffing.
 
+Supports interactive profiling with samply (--samply) and line-by-line coverage hotspots (--hotspots).
+
 Usage:
     python run_perf.py [--build-dir <dir>] [--mb 100] [--iterations 3]
     python run_perf.py --save-baseline
+    python run_perf.py --samply [--save-trace trace.json.gz]
+    python run_perf.py --hotspots [--filter mixed_iot]
 """
 
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -39,6 +44,110 @@ def format_diff(val: float, base: float) -> str:
     return f"{sign}{pct:.1f}%"
 
 
+def run_samply(args, exe_path: Path):
+    samply_bin = shutil.which("samply")
+    if not samply_bin and os.name == "nt":
+        msys_candidate = Path("C:/msys64/clang64/bin/samply.exe")
+        if msys_candidate.is_file():
+            samply_bin = str(msys_candidate)
+
+    if not samply_bin:
+        print("Error: 'samply' executable not found on PATH or C:/msys64/clang64/bin/.", file=sys.stderr)
+        print("Install samply with: pacman -S mingw-w64-clang-x86_64-samply or cargo install samply", file=sys.stderr)
+        sys.exit(1)
+
+    cmd = [samply_bin, "record"]
+    if args.save_trace:
+        cmd.extend(["--save-only", "-o", str(args.save_trace)])
+
+    cmd.append("--")
+    cmd.append(str(exe_path))
+    cmd.extend(["--mb", str(args.mb), "--iterations", str(args.iterations)])
+    if args.filter:
+        cmd.extend(["--filter", args.filter])
+
+    print("=" * 105)
+    print(" Launching samply profiler...")
+    print(f" Command: {' '.join(cmd)}")
+    print("=" * 105)
+
+    proc = subprocess.run(cmd)
+    if proc.returncode != 0:
+        print("\nNote: If samply failed with 'Administrator privileges', run your terminal as Administrator.", file=sys.stderr)
+        print("Alternatively, use 'python run_perf.py --hotspots' which profiles line execution counts in user mode.\n", file=sys.stderr)
+    sys.exit(proc.returncode)
+
+
+def run_hotspots(args, script_dir: Path, repo_tests_dir: Path):
+    espbase_src = repo_tests_dir.parent / "src"
+    emulated_idf = repo_tests_dir.parent / "emulated" / "esp-idf" / "include"
+    perf_out_dir = args.build_dir / "perf"
+    perf_out_dir.mkdir(parents=True, exist_ok=True)
+    instrumented_exe = perf_out_dir / ("stack_json_perf_instrumented.exe" if os.name == "nt" else "stack_json_perf_instrumented")
+    profraw_path = perf_out_dir / "hotspots.profraw"
+    profdata_path = perf_out_dir / "hotspots.profdata"
+    html_out_dir = perf_out_dir / "html_hotspots"
+
+    clang_bin = shutil.which("clang++") or "C:/msys64/clang64/bin/clang++.exe"
+    profdata_bin = shutil.which("llvm-profdata") or "C:/msys64/clang64/bin/llvm-profdata.exe"
+    cov_bin = shutil.which("llvm-cov") or "C:/msys64/clang64/bin/llvm-cov.exe"
+
+    print("=" * 105)
+    print(" Compiling instrumented binary with Clang source profiling (-fprofile-instr-generate)...")
+    compile_cmd = [
+        str(clang_bin),
+        "-std=gnu++26", "-O3", "-g", "-fno-omit-frame-pointer",
+        "-fprofile-instr-generate", "-fcoverage-mapping", "-DNDEBUG",
+        f"-I{espbase_src}", f"-I{emulated_idf}",
+        str(script_dir / "perf_main.cpp"),
+        str(espbase_src / "espbase" / "stack_json" / "buffer.cpp"),
+        str(espbase_src / "espbase" / "stack_json" / "document.cpp"),
+        str(espbase_src / "espbase" / "stack_json" / "parser.cpp"),
+        str(espbase_src / "espbase" / "stack_json" / "pretty_buffer.cpp"),
+        str(espbase_src / "espbase" / "stack_json" / "printer.cpp"),
+        "-o", str(instrumented_exe)
+    ]
+    res = subprocess.run(compile_cmd)
+    if res.returncode != 0:
+        print("Compilation failed.", file=sys.stderr)
+        sys.exit(res.returncode)
+
+    print(f"\nRunning instrumented benchmark (Target: {args.mb} MB, {args.iterations} iters)...")
+    env = os.environ.copy()
+    env["LLVM_PROFILE_FILE"] = str(profraw_path)
+    run_cmd = [
+        str(instrumented_exe),
+        "--mb", str(args.mb),
+        "--iterations", str(args.iterations)
+    ]
+    if args.filter:
+        run_cmd.extend(["--filter", args.filter])
+
+    res = subprocess.run(run_cmd, env=env)
+    if res.returncode != 0:
+        sys.exit(res.returncode)
+
+    print(f"\nIndexing profile data: {profraw_path} -> {profdata_path}...")
+    subprocess.run([str(profdata_bin), "merge", "-sparse", str(profraw_path), "-o", str(profdata_path)], check=True)
+
+    print(f"Generating line-level HTML report in: {html_out_dir}...")
+    cov_sources = [
+        str(espbase_src / "espbase" / "stack_json" / "document.cpp"),
+        str(espbase_src / "espbase" / "stack_json" / "parser.cpp"),
+        str(espbase_src / "espbase" / "stack_json" / "buffer.cpp"),
+    ]
+    subprocess.run([
+        str(cov_bin), "show", str(instrumented_exe),
+        f"--instr-profile={profdata_path}",
+        "--format=html", f"-output-dir={html_out_dir}"
+    ] + cov_sources, check=True)
+
+    print("=" * 105)
+    print(f" Profiling complete! Open report in browser: file:///{html_out_dir.resolve().as_posix()}/index.html")
+    print("=" * 105)
+    sys.exit(0)
+
+
 def main():
     script_dir = Path(__file__).resolve().parent
     repo_tests_dir = script_dir.parent.parent.parent  # tests/
@@ -56,8 +165,17 @@ def main():
                         help="Save current benchmark results as baseline in baseline_perf.json")
     parser.add_argument("--baseline", type=Path, default=script_dir / "baseline_perf.json",
                         help="Path to baseline JSON file")
+    parser.add_argument("--samply", action="store_true",
+                        help="Run benchmark under samply and open interactive browser flamegraph")
+    parser.add_argument("--save-trace", type=Path, default=None,
+                        help="Save samply trace archive (.json.gz) to specified path")
+    parser.add_argument("--hotspots", action="store_true",
+                        help="Compile with LLVM source instrumentation and generate line-by-line coverage HTML report")
 
     args = parser.parse_args()
+
+    if args.hotspots:
+        run_hotspots(args, script_dir, repo_tests_dir)
 
     exe_name = "stack_json_perf.exe" if os.name == "nt" else "stack_json_perf"
     exe_path = args.build_dir / exe_name
@@ -74,6 +192,9 @@ def main():
         print(f"Error: Could not find benchmark executable at: {exe_path}", file=sys.stderr)
         print("Please build it first with: ninja -C tests/build stack_json_perf", file=sys.stderr)
         sys.exit(1)
+
+    if args.samply:
+        run_samply(args, exe_path)
 
     cmd = [
         str(exe_path),
@@ -216,4 +337,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

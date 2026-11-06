@@ -75,7 +75,13 @@ target_include_directories(stack_json_perf PRIVATE
 )
 
 # Benchmarks require high optimization (-O3) regardless of CMAKE_BUILD_TYPE
-target_compile_options(stack_json_perf PRIVATE -O3 -DNDEBUG)
+# Frame pointers and CodeView debug symbols (PDB on Windows) are preserved for samply and ETW stack unwinding
+if(WIN32)
+    target_compile_options(stack_json_perf PRIVATE -O3 -g -gcodeview -fno-omit-frame-pointer -DNDEBUG)
+    target_link_options(stack_json_perf PRIVATE "-Wl,--pdb=${CMAKE_CURRENT_BINARY_DIR}/stack_json_perf.pdb")
+else()
+    target_compile_options(stack_json_perf PRIVATE -O3 -g -fno-omit-frame-pointer -DNDEBUG)
+endif()
 
 add_custom_target(perf_bench
     COMMAND ${Python3_EXECUTABLE}

@@ -14,7 +14,14 @@ class ArrayEmitter {
   Buffer& buffer_;
   bool first_ = true;
 
-  bool before_element();
+  bool before_element() {
+    if (buffer_.bad()) return false;
+    if (!first_) {
+      return buffer_.write(",") != 0;
+    }
+    first_ = false;
+    return true;
+  }
 
  public:
   explicit ArrayEmitter(Buffer& b) : buffer_(b) {}
@@ -31,7 +38,9 @@ class ArrayEmitter {
   }
 
   // Returns true if the underlying buffer is healthy (not in a failed state)
-  bool ok() const;
+  bool ok() const {
+    return !buffer_.bad();
+  }
 
   Buffer& buffer() { return buffer_; }
 };
