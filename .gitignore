@@ -1,2 +1,3 @@
 tests/build
 .hugo_build.lock
+trace.json.gz
