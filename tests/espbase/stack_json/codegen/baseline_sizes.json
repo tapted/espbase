@@ -1,82 +1,203 @@
 {
-  "builder_arrays": {
-    "text": 623,
-    "rodata": 121,
-    "total": 744
+  "corpus": {
+    "template_total": 9027,
+    "linked_net_text": 14048,
+    "linked_net_rodata": 3472,
+    "linked_net_total": 17520,
+    "filesize": 32256
   },
-  "builder_conditional": {
-    "text": 284,
-    "rodata": 108,
-    "total": 392
-  },
-  "builder_nested_doc": {
-    "text": 497,
-    "rodata": 221,
-    "total": 718
-  },
-  "builder_nested_paths": {
-    "text": 293,
-    "rodata": 134,
-    "total": 427
-  },
-  "builder_primitive_multi": {
-    "text": 509,
-    "rodata": 227,
-    "total": 736
-  },
-  "builder_primitive_scalar": {
-    "text": 150,
-    "rodata": 55,
-    "total": 205
-  },
-  "builder_stack_builder": {
-    "text": 291,
-    "rodata": 104,
-    "total": 395
-  },
-  "builder_strings": {
-    "text": 377,
-    "rodata": 184,
-    "total": 561
-  },
-  "parser_dynamic_node": {
-    "text": 399,
-    "rodata": 50,
-    "total": 449
-  },
-  "parser_entity_payload": {
-    "text": 753,
-    "rodata": 214,
-    "total": 967
-  },
-  "parser_nested_paths": {
-    "text": 340,
-    "rodata": 118,
-    "total": 458
-  },
-  "parser_primitive_multi": {
-    "text": 624,
-    "rodata": 195,
-    "total": 819
-  },
-  "parser_primitive_scalar": {
-    "text": 196,
-    "rodata": 46,
-    "total": 242
-  },
-  "parser_strings": {
-    "text": 468,
-    "rodata": 146,
-    "total": 614
-  },
-  "parser_sub_parser": {
-    "text": 679,
-    "rodata": 134,
-    "total": 813
-  },
-  "parser_unknown_catchall": {
-    "text": 401,
-    "rodata": 86,
-    "total": 487
+  "snippets": {
+    "builder_arrays": {
+      "template": {
+        "text": 623,
+        "rodata": 121,
+        "total": 744
+      },
+      "linked": {
+        "net_text": 3360,
+        "net_rodata": 532,
+        "net_total": 3892
+      }
+    },
+    "builder_conditional": {
+      "template": {
+        "text": 284,
+        "rodata": 108,
+        "total": 392
+      },
+      "linked": {
+        "net_text": 3104,
+        "net_rodata": 492,
+        "net_total": 3596
+      }
+    },
+    "builder_nested_doc": {
+      "template": {
+        "text": 497,
+        "rodata": 221,
+        "total": 718
+      },
+      "linked": {
+        "net_text": 3328,
+        "net_rodata": 620,
+        "net_total": 3948
+      }
+    },
+    "builder_nested_paths": {
+      "template": {
+        "text": 293,
+        "rodata": 134,
+        "total": 427
+      },
+      "linked": {
+        "net_text": 3024,
+        "net_rodata": 496,
+        "net_total": 3520
+      }
+    },
+    "builder_primitive_multi": {
+      "template": {
+        "text": 509,
+        "rodata": 227,
+        "total": 736
+      },
+      "linked": {
+        "net_text": 4064,
+        "net_rodata": 712,
+        "net_total": 4776
+      }
+    },
+    "builder_primitive_scalar": {
+      "template": {
+        "text": 150,
+        "rodata": 55,
+        "total": 205
+      },
+      "linked": {
+        "net_text": 2880,
+        "net_rodata": 416,
+        "net_total": 3296
+      }
+    },
+    "builder_stack_builder": {
+      "template": {
+        "text": 291,
+        "rodata": 104,
+        "total": 395
+      },
+      "linked": {
+        "net_text": 3104,
+        "net_rodata": 484,
+        "net_total": 3588
+      }
+    },
+    "builder_strings": {
+      "template": {
+        "text": 377,
+        "rodata": 184,
+        "total": 561
+      },
+      "linked": {
+        "net_text": 3024,
+        "net_rodata": 576,
+        "net_total": 3600
+      }
+    },
+    "parser_dynamic_node": {
+      "template": {
+        "text": 399,
+        "rodata": 50,
+        "total": 449
+      },
+      "linked": {
+        "net_text": 4080,
+        "net_rodata": 1060,
+        "net_total": 5140
+      }
+    },
+    "parser_entity_payload": {
+      "template": {
+        "text": 753,
+        "rodata": 214,
+        "total": 967
+      },
+      "linked": {
+        "net_text": 4080,
+        "net_rodata": 1372,
+        "net_total": 5452
+      }
+    },
+    "parser_nested_paths": {
+      "template": {
+        "text": 340,
+        "rodata": 118,
+        "total": 458
+      },
+      "linked": {
+        "net_text": 3504,
+        "net_rodata": 1116,
+        "net_total": 4620
+      }
+    },
+    "parser_primitive_multi": {
+      "template": {
+        "text": 624,
+        "rodata": 195,
+        "total": 819
+      },
+      "linked": {
+        "net_text": 4064,
+        "net_rodata": 1364,
+        "net_total": 5428
+      }
+    },
+    "parser_primitive_scalar": {
+      "template": {
+        "text": 196,
+        "rodata": 46,
+        "total": 242
+      },
+      "linked": {
+        "net_text": 3360,
+        "net_rodata": 1036,
+        "net_total": 4396
+      }
+    },
+    "parser_strings": {
+      "template": {
+        "text": 468,
+        "rodata": 146,
+        "total": 614
+      },
+      "linked": {
+        "net_text": 3952,
+        "net_rodata": 1264,
+        "net_total": 5216
+      }
+    },
+    "parser_sub_parser": {
+      "template": {
+        "text": 679,
+        "rodata": 134,
+        "total": 813
+      },
+      "linked": {
+        "net_text": 3968,
+        "net_rodata": 1296,
+        "net_total": 5264
+      }
+    },
+    "parser_unknown_catchall": {
+      "template": {
+        "text": 401,
+        "rodata": 86,
+        "total": 487
+      },
+      "linked": {
+        "net_text": 3600,
+        "net_rodata": 1092,
+        "net_total": 4692
+      }
+    }
   }
 }

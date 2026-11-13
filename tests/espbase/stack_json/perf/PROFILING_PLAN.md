@@ -12,9 +12,10 @@ Following the implementation of `stream_array(...)` and `ArrayEmitter`, we estab
 |:---|:---|:---|
 | **`samply`** | `--samply`, `--save-trace` in `run_perf.py` | ETW kernel sampling and interactive browser flamegraph visualization. |
 | **PDB Symbols** | `-gcodeview -Wl,--pdb=...` in `CMakeLists.txt` | Emits full CodeView PDB debug symbols on Windows so `samply` and Firefox Profiler can resolve exact function names, namespaces, and source lines. |
+| **`inspect_trace.py`** | Standalone offline CLI in `tests/espbase/stack_json/perf/` | Parses Firefox Profiler / samply trace archives (`trace.json.gz`), calculating exclusive self-time, inclusive total time, and call trees without needing the browser UI. |
 | **`llvm-cov` / `llvm-profdata`** | `--hotspots` in `run_perf.py` | Source-level execution counting producing browsable line-by-line HTML reports. |
 | **Benchmark Suite** | `run_perf.py` | Automated in-memory benchmarking across 5 workloads with diffing vs baseline. |
-| **Codegen Inspector** | `run_codegen.py` | Verifies 0 B template bloat on embedded targets across 16 size-optimized snippets. |
+| **Codegen & Bloat Suite** | `run_codegen.py` | Verifies 0 B template bloat across 16 snippets, and tracks complete dead-code-eliminated (DCE) linked binary footprints against CRT baselines. |
 
 ### Profiling Workflows
 ```powershell
@@ -24,16 +25,22 @@ python tests/espbase/stack_json/perf/run_perf.py --mb 100 --iterations 3
 # 2. Record interactive flamegraph under samply (requires Admin terminal on Windows)
 python tests/espbase/stack_json/perf/run_perf.py --samply --filter primitives
 
-# 3. Generate line-level HTML hotspot report
+# 3. Offline trace analysis (terminal self-time & call-tree inspection)
+python tests/espbase/stack_json/perf/inspect_trace.py trace.json.gz --top 20 --filter sjson
+
+# 4. Generate line-level HTML hotspot report
 python tests/espbase/stack_json/perf/run_perf.py --hotspots --mb 10 --iterations 1 --filter primitives
 # Report generated at: tests/build/perf/html_hotspots/index.html
+
+# 5. Measure template bloat and complete linked DCE binary footprints
+python tests/espbase/stack_json/codegen/run_codegen.py --diff
 ```
 
 ---
 
 ## 3. Profiling Findings & Root Causes Identified
 
-### From `samply` ETW Trace (`trace.json.gz`)
+### From `samply` ETW Trace (`trace.json.gz` via `inspect_trace.py`)
 * **18% in `std::isspace`:** The C standard library `<cctype>` `std::isspace` was being invoked on every single digit of every number during primitive scanning. Because `std::isspace` includes locale checks, it was dominating parser CPU cycles.
 * **7.5% in `DynamicNodeBase::next_array_token`:** Array-of-object scanning in `items >> obj_str` was using index-based character lookups with repeated bounds checks.
 * **2% in `memcpy` within `write_signed`:** Formatting integers backwards into a temporary stack buffer and then calling `std::memcpy` caused 66% of `write_signed` time to be spent moving memory.
@@ -81,15 +88,36 @@ python tests/espbase/stack_json/perf/run_perf.py --hotspots --mb 10 --iterations
 
 ---
 
-## 5. Status & Verification Results
+## 5. Dual-Tier Binary Size & Codegen Tracking
 
-* **Unit Tests:** 100% pass rate (**63 / 63** tests passing in `espbase_tests.exe`).
-* **Code Size Impact:** **0 Bytes** added template bloat across all 16 snippets in `run_codegen.py`.
-* **Symbol Resolution:** Working cleanly in `samply` via generated PDB.
+Measuring only snippet object files (`snippet.o`) creates a gap: moving template code or tree-shakable helpers into library translation units (`buffer.cpp`, `document.cpp`, `parser.cpp`, `pretty_buffer.cpp`, `printer.cpp`) reduces snippet object sizes, but can hide the size of library code that gets linked into the final application.
+
+`run_codegen.py` now tracks both layers automatically:
+1. **Isolated Template Call-Site Bloat (`snippet.o`):**
+   - Measures exact `.text` and `.rodata` generated per call site under `-Os -ffunction-sections -fdata-sections -fno-rtti`.
+   - Produces demangled, annotated assembly diffs (`.annotated.s`) and symbol contribution rankings.
+2. **Complete Dead-Code-Eliminated (DCE) Linked Binary Footprint (`<snippet>.linked.exe`):**
+   - Links each snippet against the precompiled library objects using `-Wl,--gc-sections -Wl,-s`.
+   - Measures net executable code and rodata contributed by the snippet and its transitively pulled library dependencies by subtracting an empty CRT baseline executable (`empty.exe`).
+3. **Full Corpus Linked Binary (`stack_json_corpus_stripped.exe`):**
+   - Compiles and links all 16 snippets simultaneously to measure total deduplicated footprint (shared vtables and library helpers across an entire application).
+
+### Current Size Baseline
+- **Corpus Template Total:** `9,027 B` across all 16 snippets.
+- **Full Corpus Linked Footprint:** `14,048 B` code, `3,472 B` rodata (`17,520 B` net total; `32,256 B` total binary on disk including CRT and PE headers).
 
 ---
 
-## 6. Next Optimization Avenues to Explore
+## 6. Status & Verification Results
+
+* **Unit Tests:** 100% pass rate (**63 / 63** tests passing in `espbase_tests.exe`).
+* **Code Size Impact:** **0 Bytes** added template bloat across all 16 snippets in `run_codegen.py`.
+* **Symbol Resolution:** Working cleanly in `samply` and `inspect_trace.py` via generated PDB.
+* **Baselines:** Both `baseline_sizes.json` and `baseline_perf.json` synchronized.
+
+---
+
+## 7. Next Optimization Avenues to Explore
 
 1. **Direct Child Emission at Compile-Time for `Document`:**
    - For `Document<Nodes...>` where all `Nodes` statically have depth 1 (i.e. `ValueNode<StaticPath<1>, ...>`), evaluate calling an inline child emitter directly to bypass `emit_json_nodes` function calls.

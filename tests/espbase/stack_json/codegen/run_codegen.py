@@ -4,7 +4,13 @@ stack_json Codegen Analysis Toolchain
 
 Compiles representative stack_json parser and builder snippets with size-optimized
 flags (-Os -fverbose-asm), producing annotated assembly, object files, symbol size
-breakdowns, and change-tracking diffs against baseline.
+breakdowns, and complete dead-code-eliminated (DCE) linked binary footprints.
+
+Tracks both:
+1. Isolated template call-site bloat (snippet .o section sizes).
+2. Complete optimized and tree-shaken linked binary footprint (-Wl,--gc-sections -Wl,-s)
+   incorporating tree-shakable library implementations (buffer.cpp, document.cpp,
+   parser.cpp, pretty_buffer.cpp, printer.cpp).
 
 Usage:
     python run_codegen.py [--build-dir <dir>] [--compiler <path>] [--snippet <name>]
@@ -150,6 +156,221 @@ def parse_sections(obj_file: Path, objdump_tool: str, cxxfilt_tool: str):
     return sizes, symbols
 
 
+def parse_pe_sections(exe_file: Path, objdump_tool: str) -> dict:
+    """Parse PE section sizes (.text and .rdata) of a linked executable."""
+    proc = subprocess.run([objdump_tool, "-h", str(exe_file)], capture_output=True, text=True)
+    if proc.returncode != 0:
+        return {"text": 0, "rodata": 0, "total": 0, "filesize": 0}
+
+    text_sz = 0
+    rodata_sz = 0
+    for line in proc.stdout.splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 3 and parts[0].isdigit():
+            sec_name = parts[1]
+            try:
+                sz = int(parts[2], 16)
+            except ValueError:
+                continue
+            if sec_name == ".text":
+                text_sz += sz
+            elif sec_name in (".rdata", ".rodata"):
+                rodata_sz += sz
+
+    filesize = exe_file.stat().st_size if exe_file.is_file() else 0
+    return {
+        "text": text_sz,
+        "rodata": rodata_sz,
+        "total": text_sz + rodata_sz,
+        "filesize": filesize
+    }
+
+
+def compile_library_objects(lib_dir: Path, output_dir: Path, compiler: str, include_dirs: list[Path]) -> list[Path]:
+    """Precompile stack_json core translation units with -Os -ffunction-sections -fdata-sections."""
+    obj_dir = output_dir / "lib"
+    obj_dir.mkdir(parents=True, exist_ok=True)
+
+    sources = [
+        lib_dir / "buffer.cpp",
+        lib_dir / "document.cpp",
+        lib_dir / "parser.cpp",
+        lib_dir / "pretty_buffer.cpp",
+        lib_dir / "printer.cpp",
+    ]
+
+    base_cmd = [
+        compiler,
+        "-std=gnu++26",
+        "-Os",
+        "-ffunction-sections",
+        "-fno-rtti",
+        "-fdata-sections",
+    ]
+    for inc in include_dirs:
+        base_cmd.extend(["-I", str(inc)])
+
+    compiled_objs = []
+    for src in sources:
+        if not src.is_file():
+            continue
+        obj = obj_dir / f"{src.stem}.o"
+        # Compile if missing or older than source
+        if not obj.is_file() or obj.stat().st_mtime < src.stat().st_mtime:
+            cmd = base_cmd + ["-c", str(src), "-o", str(obj)]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                print(f"Error compiling library {src.name}:\n{res.stderr}", file=sys.stderr)
+                sys.exit(1)
+        compiled_objs.append(obj)
+
+    return compiled_objs
+
+
+def build_empty_executable(output_dir: Path, compiler: str, objdump: str) -> dict:
+    """Build an empty main executable to measure baseline CRT code and rodata overhead."""
+    empty_cpp = output_dir / "empty.cpp"
+    empty_cpp.write_text("int main() { return 0; }\n", encoding="utf-8")
+    empty_exe = output_dir / "empty.exe"
+
+    cmd = [
+        compiler,
+        "-std=gnu++26",
+        "-Os",
+        "-ffunction-sections",
+        "-fdata-sections",
+        "-fno-rtti",
+        str(empty_cpp),
+        "-Wl,--gc-sections",
+        "-Wl,-s",
+        "-o",
+        str(empty_exe)
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        print(f"Error building empty baseline executable:\n{res.stderr}", file=sys.stderr)
+        return {"text": 0, "rodata": 0, "total": 0, "filesize": 0}
+
+    return parse_pe_sections(empty_exe, objdump)
+
+
+def find_entry_symbol(obj_file: Path, nm_tool: str) -> str | None:
+    """Find the mangled snippet function symbol using nm."""
+    proc = subprocess.run([nm_tool, "--defined-only", str(obj_file)], capture_output=True, text=True)
+    if proc.returncode != 0:
+        return None
+
+    for line in proc.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[1] in ("T", "t") and "snippet_" in parts[2]:
+            return parts[2]
+    return None
+
+
+def link_snippet_dce(name: str, entry_sym: str, obj_file: Path, lib_objs: list[Path],
+                     empty_sizes: dict, output_dir: Path, compiler: str, objdump: str) -> dict:
+    """
+    Link a minimal executable calling the snippet with --gc-sections to measure
+    net linked footprint (snippet + necessary library functions).
+    """
+    stub_dir = output_dir / "stubs"
+    stub_dir.mkdir(parents=True, exist_ok=True)
+    stub_file = stub_dir / f"stub_{name}.cpp"
+    stub_file.write_text(
+        f'extern "C" void {entry_sym}();\n'
+        f'int main(int argc, char** argv) {{\n'
+        f'    if (argc > 99999) {{\n'
+        f'        {entry_sym}();\n'
+        f'    }}\n'
+        f'    return 0;\n'
+        f'}}\n',
+        encoding="utf-8"
+    )
+
+    linked_exe = output_dir / f"{name}.linked.exe"
+    cmd = [
+        compiler,
+        "-std=gnu++26",
+        "-Os",
+        "-ffunction-sections",
+        "-fdata-sections",
+        "-fno-rtti",
+        str(stub_file),
+        str(obj_file),
+        *[str(o) for o in lib_objs],
+        "-Wl,--gc-sections",
+        "-Wl,-s",
+        "-o",
+        str(linked_exe)
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        print(f"Warning: Failed to link DCE binary for {name}:\n{res.stderr}", file=sys.stderr)
+        return {"net_text": 0, "net_rodata": 0, "net_total": 0, "raw": {}, "exe": None}
+
+    raw = parse_pe_sections(linked_exe, objdump)
+    net_text = max(0, raw["text"] - empty_sizes["text"])
+    net_rodata = max(0, raw["rodata"] - empty_sizes["rodata"])
+    return {
+        "net_text": net_text,
+        "net_rodata": net_rodata,
+        "net_total": net_text + net_rodata,
+        "raw": raw,
+        "exe": linked_exe
+    }
+
+
+def link_corpus_dce(entries: list[tuple[str, Path]], lib_objs: list[Path],
+                    empty_sizes: dict, output_dir: Path, compiler: str, objdump: str) -> dict:
+    """Link all snippets into a single unified binary to measure complete corpus footprint."""
+    stub_file = output_dir / "stub_corpus.cpp"
+    decls = "\n".join([f'extern "C" void {sym}();' for sym, _ in entries if sym])
+    calls = "\n".join([f'        {sym}();' for sym, _ in entries if sym])
+    stub_file.write_text(
+        f'{decls}\n'
+        f'int main(int argc, char** argv) {{\n'
+        f'    if (argc > 99999) {{\n'
+        f'{calls}\n'
+        f'    }}\n'
+        f'    return 0;\n'
+        f'}}\n',
+        encoding="utf-8"
+    )
+
+    corpus_exe = output_dir / "stack_json_corpus_stripped.exe"
+    obj_paths = [str(obj) for _, obj in entries]
+    cmd = [
+        compiler,
+        "-std=gnu++26",
+        "-Os",
+        "-ffunction-sections",
+        "-fdata-sections",
+        "-fno-rtti",
+        str(stub_file),
+        *obj_paths,
+        *[str(o) for o in lib_objs],
+        "-Wl,--gc-sections",
+        "-Wl,-s",
+        "-o",
+        str(corpus_exe)
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        print(f"Warning: Failed to link corpus executable:\n{res.stderr}", file=sys.stderr)
+        return {"net_text": 0, "net_rodata": 0, "net_total": 0, "raw": {}, "exe": None}
+
+    raw = parse_pe_sections(corpus_exe, objdump)
+    net_text = max(0, raw["text"] - empty_sizes["text"])
+    net_rodata = max(0, raw["rodata"] - empty_sizes["rodata"])
+    return {
+        "net_text": net_text,
+        "net_rodata": net_rodata,
+        "net_total": net_text + net_rodata,
+        "raw": raw,
+        "exe": corpus_exe
+    }
+
+
 def compile_snippet(snippet: Path, output_dir: Path, compiler: str,
                     include_dirs: list[Path], cxxfilt: str, objdump: str):
     name = snippet.stem
@@ -225,6 +446,7 @@ def main():
     script_dir = Path(__file__).resolve().parent
     snippets_dir = script_dir / "snippets"
     espbase_src = script_dir.parents[3] / "src"
+    stack_json_src = espbase_src / "espbase" / "stack_json"
     emulated_inc = script_dir.parents[3] / "emulated" / "esp-idf" / "include"
 
     if not args.build_dir:
@@ -246,6 +468,7 @@ def main():
 
     cxxfilt = find_tool("llvm-cxxfilt", compiler)
     objdump = find_tool("llvm-objdump", compiler)
+    nm = find_tool("llvm-nm", compiler)
 
     include_dirs = [espbase_src, emulated_inc]
 
@@ -256,28 +479,77 @@ def main():
             print(f"No snippet matching '{args.snippet}' found in {snippets_dir}", file=sys.stderr)
             sys.exit(1)
 
-    print(f"==========================================================================================")
-    print(f" stack_json Codegen Analysis Toolchain")
+    print(f"================================================================================================================")
+    print(f" stack_json Codegen & Binary Bloat Analysis Toolchain")
     print(f" Compiler : {compiler}")
     print(f" Output   : {build_dir}")
     print(f" Snippets : {len(snippet_files)} test cases")
-    print(f"==========================================================================================\n")
+    print(f"================================================================================================================\n")
 
+    # 1. Compile library objects
+    lib_objs = compile_library_objects(stack_json_src, build_dir, compiler, include_dirs)
+
+    # 2. Build empty baseline executable for CRT subtraction
+    empty_sizes = build_empty_executable(build_dir, compiler, objdump)
+
+    # 3. Compile snippets and link individual DCE binaries
     results = []
-    current_data = {}
+    corpus_entries = []
+
     for snippet in snippet_files:
         res = compile_snippet(snippet, build_dir, compiler, include_dirs, cxxfilt, objdump)
-        if res:
-            results.append(res)
-            current_data[res["name"]] = res["sizes"]
+        if not res:
+            continue
+
+        entry_sym = find_entry_symbol(res["obj_file"], nm)
+        linked = link_snippet_dce(
+            res["name"], entry_sym, res["obj_file"], lib_objs,
+            empty_sizes, build_dir, compiler, objdump
+        )
+        res["entry_sym"] = entry_sym
+        res["linked"] = linked
+        results.append(res)
+        if entry_sym:
+            corpus_entries.append((entry_sym, res["obj_file"]))
+
+    # 4. Link complete multi-snippet corpus binary
+    corpus_linked = link_corpus_dce(corpus_entries, lib_objs, empty_sizes, build_dir, compiler, objdump)
+
+    # Prepare structured current data
+    current_data = {
+        "corpus": {
+            "template_total": sum(r["sizes"]["total"] for r in results),
+            "linked_net_text": corpus_linked["net_text"],
+            "linked_net_rodata": corpus_linked["net_rodata"],
+            "linked_net_total": corpus_linked["net_total"],
+            "filesize": corpus_linked["raw"].get("filesize", 0)
+        },
+        "snippets": {}
+    }
+    for r in results:
+        current_data["snippets"][r["name"]] = {
+            "template": r["sizes"],
+            "linked": {
+                "net_text": r["linked"]["net_text"],
+                "net_rodata": r["linked"]["net_rodata"],
+                "net_total": r["linked"]["net_total"]
+            }
+        }
 
     # Handle baseline
     baseline_data = {}
     if baseline_file.is_file():
         try:
-            baseline_data = json.loads(baseline_file.read_text(encoding="utf-8"))
+            raw_base = json.loads(baseline_file.read_text(encoding="utf-8"))
+            if "snippets" in raw_base:
+                baseline_data = raw_base
+            else:
+                # Migrate legacy baseline structure
+                baseline_data = {"corpus": {}, "snippets": {}}
+                for k, v in raw_base.items():
+                    baseline_data["snippets"][k] = {"template": v, "linked": {}}
         except Exception:
-            pass
+            baseline_data = {}
 
     if args.save_baseline:
         baseline_file.write_text(json.dumps(current_data, indent=2), encoding="utf-8")
@@ -285,78 +557,138 @@ def main():
         baseline_data = current_data
 
     # Print summary table
-    has_diff = bool(baseline_data) and (args.diff or args.save_baseline or True)
-    if has_diff:
-        header = f"{'Snippet Case':<30} {'Code (.text)':<13} {'ROData':<10} {'Total':<10} {'Diff vs Base':<14} {'Top Bloat Contributor'}"
-    else:
-        header = f"{'Snippet Case':<30} {'Code (.text)':<13} {'ROData':<10} {'Total':<10} {'Top Bloat Contributor'}"
+    has_diff = bool(baseline_data.get("snippets"))
+    header = (
+        f"{'Snippet Case':<26} "
+        f"{'Tmpl .o':>9} "
+        f"{'Net Linked':>11} "
+        f"{'Net .text':>10} "
+        f"{'Net .rdata':>11} "
+        f"{'Diff Tmpl / Link':>18}  "
+        f"{'Top Bloat Contributor'}"
+    )
 
     print(header)
     print("-" * len(header))
 
     report_lines = [
-        "# stack_json Codegen Analysis Report",
+        "# stack_json Codegen & Binary Bloat Analysis Report",
         "",
         f"- **Compiler:** `{compiler}`",
-        f"- **Optimization:** `-std=gnu++26 -Os -ffunction-sections -fdata-sections -fverbose-asm`",
+        f"- **Optimization Flags:** `-std=gnu++26 -Os -ffunction-sections -fdata-sections -fno-rtti -Wl,--gc-sections -Wl,-s`",
+        f"- **CRT Baseline (empty.exe):** `{empty_sizes['text']} B` code, `{empty_sizes['rodata']} B` rodata (`{empty_sizes['filesize']} B` on disk)",
         f"- **Snippets Analyzed:** {len(results)}",
         "",
-        "| Snippet Case | .text (code) | .rodata (vtables) | Total Bytes | Diff vs Base | Top Bloat Contributor |",
-        "|:---|---:|---:|---:|---:|:---|"
+        "### Per-Snippet Code Size Impact",
+        "",
+        "| Snippet Case | Template .o | Net Linked DCE | Linked .text | Linked .rdata | Diff (Tmpl / Link) | Top Bloat Contributor |",
+        "|:---|---:|---:|---:|---:|---:|:---|"
     ]
 
-    total_text = 0
-    total_rodata = 0
-    total_all = 0
-    total_base = 0
+    tot_tmpl_bytes = 0
+    tot_net_linked_sum = 0
+    tot_tmpl_base_sum = 0
+    tot_linked_base_sum = 0
 
     for r in results:
         name = r["name"]
         sz = r["sizes"]
-        top_sym = "-"
-        if r["symbols"]:
-            top_sym = r["symbols"][0]["name"]
-        top_sym_short = (top_sym[:38] + "...") if len(top_sym) > 38 else top_sym
+        lk = r["linked"]
+        top_sym = r["symbols"][0]["name"] if r["symbols"] else "-"
+        top_sym_short = (top_sym[:32] + "...") if len(top_sym) > 32 else top_sym
 
-        total_text += sz["text"]
-        total_rodata += sz["rodata"]
-        total_all += sz["total"]
+        tot_tmpl_bytes += sz["total"]
+        tot_net_linked_sum += lk["net_total"]
 
-        diff_str = "-"
-        if name in baseline_data:
-            b_tot = baseline_data[name].get("total", sz["total"])
-            total_base += b_tot
-            delta = sz["total"] - b_tot
-            if delta > 0:
-                diff_str = f"+{delta} B"
-            elif delta < 0:
-                diff_str = f"{delta} B"
-            else:
-                diff_str = "0 B"
+        diff_str = "- / -"
+        b_info = baseline_data.get("snippets", {}).get(name, {})
+        if b_info:
+            b_tmpl = b_info.get("template", {}).get("total")
+            b_lk = b_info.get("linked", {}).get("net_total")
+            d_tmpl_str = "-"
+            d_lk_str = "-"
+            if b_tmpl is not None:
+                tot_tmpl_base_sum += b_tmpl
+                d = sz["total"] - b_tmpl
+                d_tmpl_str = f"{'+' if d > 0 else ''}{d} B"
+            if b_lk is not None:
+                tot_linked_base_sum += b_lk
+                d = lk["net_total"] - b_lk
+                d_lk_str = f"{'+' if d > 0 else ''}{d} B"
+            diff_str = f"{d_tmpl_str} / {d_lk_str}"
 
-        if has_diff:
-            print(f"{name:<30} {sz['text']:>8} B    {sz['rodata']:>6} B   {sz['total']:>6} B   {diff_str:>12}   {top_sym_short}")
-        else:
-            print(f"{name:<30} {sz['text']:>8} B    {sz['rodata']:>6} B   {sz['total']:>6} B   {top_sym_short}")
+        print(
+            f"{name:<26} "
+            f"{sz['total']:>7} B "
+            f"{lk['net_total']:>9} B "
+            f"{lk['net_text']:>8} B "
+            f"{lk['net_rodata']:>9} B "
+            f"{diff_str:>18}  "
+            f"{top_sym_short}"
+        )
 
-        report_lines.append(f"| [`{name}`](./{name}.annotated.s) | {sz['text']} B | {sz['rodata']} B | **{sz['total']} B** | {diff_str} | `{top_sym_short}` |")
-
-    tot_diff_str = "-"
-    if total_base > 0:
-        tot_delta = total_all - total_base
-        tot_diff_str = f"{'+' if tot_delta > 0 else ''}{tot_delta} B"
+        report_lines.append(
+            f"| [`{name}`](./{name}.annotated.s) | {sz['total']} B | **{lk['net_total']} B** | "
+            f"{lk['net_text']} B | {lk['net_rodata']} B | {diff_str} | `{top_sym_short}` |"
+        )
 
     print("-" * len(header))
-    if has_diff:
-        print(f"{'TOTAL CORPUS':<30} {total_text:>8} B    {total_rodata:>6} B   {total_all:>6} B   {tot_diff_str:>12}")
-    else:
-        print(f"{'TOTAL CORPUS':<30} {total_text:>8} B    {total_rodata:>6} B   {total_all:>6} B")
-    report_lines.append(f"| **TOTAL CORPUS** | **{total_text} B** | **{total_rodata} B** | **{total_all} B** | **{tot_diff_str}** | |")
 
-    # Detailed symbol breakdowns per snippet
-    report_lines.extend(["", "---", "", "## Detailed Symbol Breakdown per Snippet", ""])
+    tot_diff_str = "- / -"
+    if tot_tmpl_base_sum > 0 or tot_linked_base_sum > 0:
+        d_tmpl_tot = tot_tmpl_bytes - tot_tmpl_base_sum
+        d_lk_tot = tot_net_linked_sum - tot_linked_base_sum
+        tot_diff_str = f"{'+' if d_tmpl_tot > 0 else ''}{d_tmpl_tot} B / {'+' if d_lk_tot > 0 else ''}{d_lk_tot} B"
+
+    print(
+        f"{'TOTAL (Isolated Sum)':<26} "
+        f"{tot_tmpl_bytes:>7} B "
+        f"{tot_net_linked_sum:>9} B "
+        f"{'':>10} "
+        f"{'':>11} "
+        f"{tot_diff_str:>18}"
+    )
+
+    # Full Linked Corpus Summary
+    c_net_text = corpus_linked["net_text"]
+    c_net_rodata = corpus_linked["net_rodata"]
+    c_net_tot = corpus_linked["net_total"]
+    c_filesize = corpus_linked["raw"].get("filesize", 0)
+
+    c_base = baseline_data.get("corpus", {})
+    c_diff_str = ""
+    if "linked_net_total" in c_base:
+        cdiff = c_net_tot - c_base["linked_net_total"]
+        c_diff_str = f" ({'+' if cdiff > 0 else ''}{cdiff} B vs base)"
+
+    print(f"\n================================================================================================================")
+    print(f" FULL CORPUS LINKED BINARY (stack_json_corpus_stripped.exe)")
+    print(f" Net Code (.text)   : {c_net_text:>6} B")
+    print(f" Net ROData (.rdata): {c_net_rodata:>6} B")
+    print(f" Net Total Footprint: {c_net_tot:>6} B{c_diff_str}")
+    print(f" Total Binary Size  : {c_filesize:>6} B on disk (including CRT & PE headers)")
+    print(f"================================================================================================================\n")
+
+    report_lines.extend([
+        f"| **TOTAL (Isolated Sum)** | **{tot_tmpl_bytes} B** | **{tot_net_linked_sum} B** | | | **{tot_diff_str}** | |",
+        "",
+        "### Complete Multi-Snippet Corpus Binary",
+        "",
+        "When linking all 16 snippets into a single unified binary (`stack_json_corpus_stripped.exe`) with full dead-code elimination (`-Wl,--gc-sections -Wl,-s`), shared library methods and vtables are deduplicated:",
+        "",
+        f"- **Net Executable Code (`.text`):** `{c_net_text} B`",
+        f"- **Net Read-Only Data (`.rdata`):** `{c_net_rodata} B`",
+        f"- **Net Total stack_json Footprint:** **`{c_net_tot} B`**{c_diff_str}",
+        f"- **Total Executable Size on Disk:** `{c_filesize} B`",
+        "",
+        "---",
+        "",
+        "## Detailed Symbol Breakdown per Snippet",
+        ""
+    ])
+
     for r in results:
-        report_lines.append(f"### [`{r['name']}`](./{r['name']}.annotated.s) — Total: {r['sizes']['total']} B (Code: {r['sizes']['text']} B, ROData: {r['sizes']['rodata']} B)")
+        report_lines.append(f"### [`{r['name']}`](./{r['name']}.annotated.s) — Template .o: {r['sizes']['total']} B | Net Linked: {r['linked']['net_total']} B")
         report_lines.append(f"- Annotated Assembly: [`{r['name']}.annotated.s`](./{r['name']}.annotated.s)")
         report_lines.append(f"- Raw Assembly: [`{r['name']}.s`](./{r['name']}.s)")
         report_lines.append(f"- Symbol Dump: [`{r['name']}.symbols.txt`](./{r['name']}.symbols.txt)")
@@ -369,7 +701,7 @@ def main():
 
     report_path = build_dir / "codegen_report.md"
     report_path.write_text("\n".join(report_lines), encoding="utf-8")
-    print(f"\nAnnotated assembly files and report generated in:\n  {build_dir}\n")
+    print(f"Annotated assembly files, binaries, and report generated in:\n  {build_dir}\n")
 
 
 if __name__ == "__main__":
