@@ -1,9 +1,9 @@
 {
   "corpus": {
     "template_total": 9027,
-    "linked_net_text": 14048,
-    "linked_net_rodata": 3472,
-    "linked_net_total": 17520,
+    "linked_net_text": 13984,
+    "linked_net_rodata": 3476,
+    "linked_net_total": 17460,
     "filesize": 32256
   },
   "snippets": {
@@ -110,9 +110,9 @@
         "total": 449
       },
       "linked": {
-        "net_text": 4080,
-        "net_rodata": 1060,
-        "net_total": 5140
+        "net_text": 4000,
+        "net_rodata": 1064,
+        "net_total": 5064
       }
     },
     "parser_entity_payload": {
@@ -146,9 +146,9 @@
         "total": 819
       },
       "linked": {
-        "net_text": 4064,
+        "net_text": 4080,
         "net_rodata": 1364,
-        "net_total": 5428
+        "net_total": 5444
       }
     },
     "parser_primitive_scalar": {
@@ -182,9 +182,9 @@
         "total": 813
       },
       "linked": {
-        "net_text": 3968,
+        "net_text": 3984,
         "net_rodata": 1296,
-        "net_total": 5264
+        "net_total": 5280
       }
     },
     "parser_unknown_catchall": {

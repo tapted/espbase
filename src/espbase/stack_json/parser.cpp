@@ -27,6 +27,33 @@ static inline constexpr bool is_primitive_delim(char c) {
   }
 }
 
+// Scans ahead over balanced '{...}' or '[...]' structural blocks, skipping quotes/escapes.
+static std::size_t find_structural_end(std::string_view text) {
+  const char* ptr = text.data();
+  const char* end_ptr = ptr + text.size();
+  int depth = 0;
+  while (ptr < end_ptr) {
+    char c = *ptr++;
+    if (c == '"') {
+      while (ptr < end_ptr) {
+        char sc = *ptr++;
+        if (sc == '\\') {
+          if (ptr < end_ptr) ptr++;
+        } else if (sc == '"') {
+          break;
+        }
+      }
+    } else if (c == '{' || c == '[') {
+      depth++;
+    } else if (c == '}' || c == ']') {
+      if (--depth == 0) {
+        break;
+      }
+    }
+  }
+  return static_cast<std::size_t>(ptr - text.data());
+}
+
 void coerce_value(std::string_view raw_val, bool is_null, bool& target) {
   if (is_null) {
     target = false;
@@ -156,29 +183,7 @@ std::string_view DynamicNodeBase::next_array_token(bool& is_str) {
       }
     }
   } else if (iter_state_.front() == '{' || iter_state_.front() == '[') {
-    const char* ptr = iter_state_.data();
-    const char* end_ptr = ptr + iter_state_.size();
-    int depth = 0;
-    while (ptr < end_ptr) {
-      char c = *ptr++;
-      if (c == '"') {
-        while (ptr < end_ptr) {
-          char sc = *ptr++;
-          if (sc == '\\') {
-            if (ptr < end_ptr) ptr++;
-          } else if (sc == '"') {
-            break;
-          }
-        }
-      } else if (c == '{' || c == '[') {
-        depth++;
-      } else if (c == '}' || c == ']') {
-        if (--depth == 0) {
-          break;
-        }
-      }
-    }
-    end = static_cast<std::size_t>(ptr - iter_state_.data());
+    end = find_structural_end(iter_state_);
   } else {
     while (end < iter_state_.size() && !is_primitive_delim(iter_state_[end])) {
       end++;
@@ -294,25 +299,21 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
     while (i < json.size()) {
       if (is_json_whitespace(json[i])) {
         i++;
-      }
-      // Check for the start of a comment
-      else if (json[i] == '/' && i + 1 < json.size()) {
+      } else if (json[i] == '/' && i + 1 < json.size()) {
         if (json[i + 1] == '/') {
-          // Single-line comment: skip until newline
           i += 2;
           while (i < json.size() && json[i] != '\n') i++;
         } else if (json[i + 1] == '*') {
-          // Multi-line comment: skip until */
           i += 2;
           while (i + 1 < json.size() && !(json[i] == '*' && json[i + 1] == '/')) {
             i++;
           }
-          i += 2;  // skip the closing */
+          i += 2;
         } else {
-          break;  // Just a random slash, break and let the parser handle/fail it
+          break;
         }
       } else {
-        break;  // Found actual JSON content
+        break;
       }
     }
   };
@@ -335,41 +336,40 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
 
     if (!needs_capture && !catch_all) return;
 
-    std::size_t end = i;
-    int brace_depth = 0;
-    bool in_str = false;
-
-    while (end < json.size()) {
-      char ec = json[end];
-      if (in_str) {
-        if (ec == '\\')
-          end++;
-        else if (ec == '"')
-          in_str = false;
-      } else {
-        if (ec == '"')
-          in_str = true;
-        else if (ec == '{' || ec == '[')
-          brace_depth++;
-        else if (ec == '}' || ec == ']') {
-          brace_depth--;
-          if (brace_depth == 0) {
-            end++;
-            break;
-          }
+    std::size_t block_len = find_structural_end(json.substr(i));
+    std::string_view block = json.substr(i, block_len);
+    if (needs_capture) {
+      for (auto* n : nodes) {
+        if (!n->is_catch_all() && n->path().matches_parent(current_path)) {
+          n->assign(current_path, block, false, false);
         }
       }
-      end++;
-    }
-
-    std::string_view block = json.substr(i, end - i);
-    if (needs_capture) {
-      for (auto* n : nodes)
-        if (!n->is_catch_all() && n->path().matches_parent(current_path))
-          n->assign(current_path, block, false, false);
     } else if (catch_all) {
       catch_all->assign(current_path, block, false, false);
     }
+  };
+
+  // Assign value to matching node or catch-all binding
+  auto assign_value = [&](std::string_view val, bool is_string, bool is_null) {
+    if (depth < path_stack.size()) {
+      path_stack[depth] = current_key;
+      PathBase current_path(path_stack.data(), depth + 1);
+      bool matched = false;
+      ParseNodeBase* catch_all = nullptr;
+      for (auto* n : nodes) {
+        if (n->is_catch_all()) {
+          if (!current_key.empty()) catch_all = n;
+        } else if (n->path().matches_parent(current_path)) {
+          n->assign(current_path, val, is_string, is_null);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched && catch_all) {
+        catch_all->assign(current_path, val, is_string, is_null);
+      }
+    }
+    current_key = "";
   };
 
   while (i < json.size()) {
@@ -381,7 +381,6 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
     if (c == '{') {
       capture_structural_value();
       if (!current_key.empty()) {
-        // Only store the path if we have room in our span
         if (depth < path_stack.size()) {
           path_stack[depth] = current_key;
         }
@@ -391,14 +390,13 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
       i++;
     } else if (c == '[') {
       capture_structural_value();
-      current_key = "";  // Isolate array contents from parent key!
+      current_key = "";  // Isolate array contents from parent key
       i++;
     } else if (c == '}') {
       if (depth > 0) depth--;
       i++;
     } else if (c == ',' || c == ':' || c == ']') {
-      // SAFE STRUCTURAL SKIP
-      // This natively absorbs trailing commas (e.g., `1, }` reads 1, skips `,`, closes `}`)
+      // Safe structural skip: absorbs trailing commas and structural delimiters
       i++;
     } else if (c == '"') {
       i++;
@@ -410,66 +408,24 @@ void parse_json_nodes(std::string_view json, std::span<ParseNodeBase*> nodes,
       std::string_view str_val = json.substr(start, i - start);
       if (i < json.size()) i++;
 
+      if (i >= json.size() || json[i] != ':') {
+        skip_ws_and_comments();
+      }
+
       if (i < json.size() && json[i] == ':') {
         current_key = str_val;
         i++;
       } else {
-        skip_ws_and_comments();
-        if (i < json.size() && json[i] == ':') {
-          current_key = str_val;
-          i++;
-        } else {
-          // Only evaluate bindings if we haven't exceeded our tracked path stack
-          if (depth < path_stack.size()) {
-            path_stack[depth] = current_key;
-            PathBase current_path(path_stack.data(), depth + 1);
-            bool matched = false;
-            ParseNodeBase* catch_all = nullptr;
-            for (auto* n : nodes) {
-              if (n->is_catch_all()) {
-                if (!current_key.empty()) catch_all = n;
-              } else if (n->path().matches_parent(current_path)) {
-                n->assign(current_path, str_val, true, false);
-                matched = true;
-                break;
-              }
-            }
-            if (!matched && catch_all) {
-              catch_all->assign(current_path, str_val, true, false);
-            }
-          }
-          current_key = "";  // Clear key so next array element doesn't reuse it
-        }
+        assign_value(str_val, true, false);
       }
     } else {
-      // Must be a primitive value (number, true, false, null)
+      // Primitive value (number, true, false, null)
       std::size_t start = i;
-
       while (i < json.size() && !is_primitive_delim(json[i])) {
         i++;
       }
       std::string_view prim_val = json.substr(start, i - start);
-
-      if (depth < path_stack.size()) {
-        bool is_null = (prim_val == "null");
-        path_stack[depth] = current_key;
-        PathBase current_path(path_stack.data(), depth + 1);
-        bool matched = false;
-        ParseNodeBase* catch_all = nullptr;
-        for (auto* n : nodes) {
-          if (n->is_catch_all()) {
-            if (!current_key.empty()) catch_all = n;
-          } else if (n->path().matches_parent(current_path)) {
-            n->assign(current_path, prim_val, false, is_null);
-            matched = true;
-            break;
-          }
-        }
-        if (!matched && catch_all) {
-          catch_all->assign(current_path, prim_val, false, is_null);
-        }
-      }
-      current_key = "";
+      assign_value(prim_val, false, prim_val == "null");
     }
   }
 }
