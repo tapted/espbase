@@ -102,13 +102,19 @@ python tests/espbase/stack_json/codegen/run_codegen.py --diff
 * In `parser.cpp`, scalar `coerce_value` overloads for `char`, `short`, and `long` route through core integer coercions, eliminating 9 redundant instantiations of `std::from_chars` and `<charconv>` traits.
 * Replaced the 11-step branching ladder in `num_digits_u64` with a 32-bit fast path and compact loop for >4GB values.
 
+### 11. Inlined Delegating Overloads in Headers (`value.hpp`, `parser_impl.hpp`)
+* In `value.hpp`, defined delegating scalar overloads (`short`, `unsigned short`, `signed char`, `unsigned char`, `long`, `unsigned long`, `float`) `inline` in the header, calling core functions directly.
+* In `parser_impl.hpp`, defined delegating scalar overloads (`char`, `signed char`, `unsigned char`, `short`, `unsigned short`, `long`, `unsigned long`) `inline` in the header, calling core functions directly.
+* Removed all 14 trampoline definitions from `document.cpp` and `parser.cpp`.
+* Eliminated ~1.3 KB of trampoline code and symbols from `document.cpp.obj`, eliminated trampoline symbols in `parser.cpp.obj`, and removed the intermediate call jump at runtime for non-core scalar types.
+
 ---
 
-## 5. Dual-Tier Binary Size & Codegen Tracking
+## 5. Three-Tier Binary Size & Codegen Tracking
 
 Measuring only snippet object files (`snippet.o`) creates a gap: moving template code or tree-shakable helpers into library translation units (`buffer.cpp`, `document.cpp`, `parser.cpp`, `pretty_buffer.cpp`, `printer.cpp`) reduces snippet object sizes, but can hide the size of library code that gets linked into the final application.
 
-`run_codegen.py` tracks both layers automatically:
+`run_codegen.py` tracks all three layers automatically:
 1. **Isolated Template Call-Site Bloat (`snippet.o`):**
    - Measures exact `.text` and `.rodata` generated per call site under `-Os -ffunction-sections -fdata-sections -fno-rtti`.
    - Produces demangled, annotated assembly diffs (`.annotated.s`) and symbol contribution rankings.
@@ -117,18 +123,21 @@ Measuring only snippet object files (`snippet.o`) creates a gap: moving template
    - Measures net executable code and rodata contributed by the snippet and its transitively pulled library dependencies by subtracting an empty CRT baseline executable (`empty.exe`).
 3. **Full Corpus Linked Binary (`stack_json_corpus_stripped.exe`):**
    - Compiles and links all 16 snippets simultaneously to measure total deduplicated footprint (shared vtables and library helpers across an entire application).
+4. **Precompiled Library Translation Units (`document.o`, `parser.o`, etc.):**
+   - Measures the unstripped code and data sections of the core library objects to track bloat inside tree-shakable overloads and helpers directly in `baseline_sizes.json`.
 
 ### Current Size Baseline
-- **Corpus Template Total:** **`8,170 B`** across all 16 snippets (**-857 B** vs prior 9,027 B baseline).
-- **Full Corpus Linked Footprint:** **`13,792 B`** code, **`3,052 B`** rodata (**`16,844 B`** net total, **-616 B** vs prior 17,460 B baseline; **`31,744 B`** total binary on disk including CRT and PE headers).
+- **Corpus Template Total:** **`8,170 B`** across all 16 snippets.
+- **Full Corpus Linked Footprint:** **`13,792 B`** code, **`3,052 B`** rodata (**`16,844 B`** net total; **`31,744 B`** total binary on disk including CRT and PE headers).
+- **Core Library Objects:** `document.o`: **2,917 B** (2,887 B text), `parser.o`: **5,204 B** (4,799 B text), `buffer.o`: **1,037 B**, `pretty_buffer.o`: **973 B**, `printer.o`: **815 B**.
 
 ---
 
 ## 6. Status & Verification Results
 
 * **Unit Tests:** 100% pass rate (**63 / 63** tests passing in `espbase_tests.exe`).
-* **Code Size Impact:** **-857 B** template bloat reduction and **-616 B** net linked binary reduction.
-* **Performance:** Average **`251.3 MB/s`** build, **`241.9 MB/s`** parse (~**2.13M** ops/sec) with primitives parse breaking **`305 MB/s`** (**3.45M** ops/sec).
+* **Code Size Impact:** **-857 B** template bloat reduction, **-616 B** net linked binary reduction, and **-1.3 KB** trampoline overhead eliminated from `document.o`/`parser.o`.
+* **Performance:** Average **`256.9 MB/s`** build, **`249.6 MB/s`** parse (~**2.19M** ops/sec) with primitives parse at **`304.3 MB/s`** (**3.44M** ops/sec).
 * **Symbol Resolution:** Working cleanly in `samply` and `inspect_trace.py` via generated PDB.
 
 ---

@@ -175,37 +175,8 @@ void write_json_value(Buffer& buffer, long long value) {
 void write_json_value(Buffer& buffer, unsigned long long value) {
   write_unsigned(buffer, value);
 }
-void write_json_value(Buffer& buffer, long value) {
-  if constexpr (sizeof(long) == sizeof(int)) {
-    write_json_value(buffer, static_cast<int>(value));
-  } else {
-    write_json_value(buffer, static_cast<long long>(value));
-  }
-}
-void write_json_value(Buffer& buffer, unsigned long value) {
-  if constexpr (sizeof(unsigned long) == sizeof(unsigned int)) {
-    write_json_value(buffer, static_cast<unsigned int>(value));
-  } else {
-    write_json_value(buffer, static_cast<unsigned long long>(value));
-  }
-}
-void write_json_value(Buffer& buffer, short value) {
-  write_json_value(buffer, static_cast<int>(value));
-}
-void write_json_value(Buffer& buffer, unsigned short value) {
-  write_json_value(buffer, static_cast<unsigned int>(value));
-}
-void write_json_value(Buffer& buffer, signed char value) {
-  write_json_value(buffer, static_cast<int>(value));
-}
-void write_json_value(Buffer& buffer, unsigned char value) {
-  write_json_value(buffer, static_cast<unsigned int>(value));
-}
 void write_json_value(Buffer& buffer, double value) {
   Printer::printx(buffer, "%g", value);
-}
-void write_json_value(Buffer& buffer, float value) {
-  Printer::printx(buffer, "%g", static_cast<double>(value));
 }
 void write_json_value(Buffer& buffer, bool value) {
   buffer.write(value ? "true" : "false");

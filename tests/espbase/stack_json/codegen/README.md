@@ -12,9 +12,10 @@ This document summarizes the goals, methodology, optimization milestones, archit
   - Zero breaking changes to the public-facing API (`sjson::json_parser`, `sjson::bind`, `sjson::stack_json`, `sjson::node`, `sjson::node_if`, `sjson::path`, etc.).
   - All unit tests in `espbase_tests.exe` (63 tests across 12 test suites) must pass cleanly.
   - Release compilation uses `-std=gnu++26 -Os -ffunction-sections -fdata-sections -fno-rtti`.
-  - Dual-tier representative measurement via an automated 16-snippet corpus covering typical production usage patterns:
+  - Three-tier representative measurement via an automated 16-snippet corpus covering typical production usage patterns:
     1. **Isolated Template Call-Site Bloat:** Section bytes generated in snippet object files (`.o`).
     2. **Complete Dead-Code-Eliminated (DCE) Linked Footprint:** Net executable bytes linked with tree-shaken library objects (`-Wl,--gc-sections -Wl,-s`), subtracted against CRT baseline (`empty.exe`).
+    3. **Precompiled Library Translation Units:** Section bytes generated in core library object files (`document.o`, `parser.o`, `buffer.o`, etc.) to track unstripped tree-shakable helpers and prevent code bloat migration into library TUs.
 
 ---
 
@@ -31,7 +32,7 @@ The analysis toolchain is located in this directory:
   - Links a complete multi-snippet corpus binary (`stack_json_corpus_stripped.exe`) measuring real-world deduplication of shared vtables and library helpers across an entire application.
   - Outputs a consolidated summary report (`codegen_report.md`).
   - Supports `--save-baseline` and `--diff` to verify changes quantitatively.
-- **`baseline_sizes.json`:** JSON record of reference snippet template sizes and linked DCE footprints.
+- **`baseline_sizes.json`:** JSON record of reference snippet template sizes, linked DCE footprints, and precompiled library translation unit footprints (`document.o`, `parser.o`, `buffer.o`, `pretty_buffer.o`, `printer.o`).
 - **`snippets/`:** 16 self-contained snippet translation units:
   - Builders: `builder_primitive_scalar`, `builder_primitive_multi`, `builder_strings`, `builder_nested_paths`, `builder_conditional`, `builder_arrays`, `builder_nested_doc`, `builder_stack_builder`.
   - Parsers: `parser_primitive_scalar`, `parser_primitive_multi`, `parser_strings`, `parser_nested_paths`, `parser_dynamic_node`, `parser_sub_parser`, `parser_unknown_catchall`, `parser_entity_payload`.
@@ -116,7 +117,7 @@ Two subsequent approaches were attempted to remove virtual lookups from nodes:
   - Streamlined minified and whitespace-delimited colon checks.
 - **Result:** Full corpus linked executable code shrank by **-64 B** (`.text`), net total footprint dropped to **17,460 B** (**-60 B**), and `parser_dynamic_node` linked size shrank by **-76 B**, while benchmark parse throughput increased by **+10% to +40%**.
 
-### Phase 8: Non-Virtual Destructors & Scalar Consolidation (Current State)
+### Phase 8: Non-Virtual Destructors & Scalar Consolidation (`d728ea1`)
 - **Non-Virtual Node Base Destructors (`node.hpp`, `parser.hpp`):**
   - Nodes in `stack_json` are automatic stack variables lifetime-managed inside `std::tuple`; they are never allocated on the heap or deleted via base pointers.
   - Replaced `virtual ~NodeBase()` and `virtual ~ParseNodeBase()` with non-virtual protected destructors (`protected: ~NodeBase() = default;`, `protected: ~ParseNodeBase() = default;`).
@@ -131,6 +132,18 @@ Two subsequent approaches were attempted to remove virtual lookups from nodes:
   - Full corpus linked binary footprint dropped from **17,460 B to 16,844 B** (**-616 B**).
   - Total binary executable on disk dropped from **32,256 B to 31,744 B** (**-512 B**).
   - Benchmark parse throughput increased to **249.6 MB/s** average (with primitives parse reaching **305 MB/s**).
+
+### Phase 9: Inlined Delegating Overloads in Headers (Current State)
+- **Inlined Trampolines (`value.hpp`, `parser_impl.hpp`):**
+  - In `value.hpp`, defined the 7 delegating scalar overloads (`short`, `unsigned short`, `signed char`, `unsigned char`, `long`, `unsigned long`, `float`) as `inline` in the header, directly calling the out-of-line core implementations (`int`, `unsigned int`, `long long`, `unsigned long long`, `double`).
+  - In `parser_impl.hpp`, defined the 7 delegating scalar overloads (`char`, `signed char`, `unsigned char`, `short`, `unsigned short`, `long`, `unsigned long`) as `inline` in the header, directly calling the out-of-line core implementations.
+  - Removed all 14 out-of-line trampoline wrapper definitions from `document.cpp` and `parser.cpp`.
+- **Result:**
+  - Eliminated 7 trampoline functions and their symbol tables from `document.cpp.obj`, shrinking `.text` by **~1.3 KB** (from ~4,200 B to 2,887 B).
+  - Eliminated 7 trampoline functions and their symbol tables from `parser.cpp.obj`.
+  - Callers serializing or parsing non-core scalar types (`short`, `long`, `char`) now cast and jump directly to the core routines at the call site, eliminating an intermediate trampoline hop at runtime.
+  - Zero regression in isolated template footprint (8,170 B) or full linked corpus footprint (16,844 B).
+  - Throughput maintained at **256.9 MB/s** build, **249.6 MB/s** parse, and primitives parse reaching **304.3 MB/s** (3.44 M ops/s).
 
 ---
 
@@ -163,6 +176,17 @@ Two subsequent approaches were attempted to remove virtual lookups from nodes:
 | `parser_sub_parser` | 749 B | **5,160 B** | 3,936 B | 1,224 B | `sjson::DynamicNodeBase::parse` |
 | `parser_unknown_catchall` | 444 B | **4,600 B** | 3,568 B | 1,032 B | `snippet_parser_unknown_catchall` |
 | **TOTAL (Isolated Sum)** | **8,170 B** | **68,328 B** | | | *(Deduplicated corpus: **16,844 B**)* |
+
+### Precompiled Library Translation Units Footprint
+To ensure optimizations do not hide bloat inside tree-shakable library files, `run_codegen.py` tracks the unstripped object file footprints:
+
+| Library Object | Code (.text) | ROData | Total |
+|:---|---:|---:|---:|
+| `buffer.o` | 911 B | 126 B | **1,037 B** |
+| `document.o` | 2,887 B | 30 B | **2,917 B** |
+| `parser.o` | 4,799 B | 405 B | **5,204 B** |
+| `pretty_buffer.o` | 879 B | 94 B | **973 B** |
+| `printer.o` | 765 B | 50 B | **815 B** |
 
 ---
 

@@ -84,53 +84,6 @@ void coerce_value(std::string_view raw_val, bool is_null, unsigned long long& ta
   coerce_int(raw_val, is_null, target);
 }
 
-void coerce_value(std::string_view raw_val, bool is_null, char& target) {
-  int v = 0;
-  coerce_value(raw_val, is_null, v);
-  target = static_cast<char>(v);
-}
-void coerce_value(std::string_view raw_val, bool is_null, signed char& target) {
-  int v = 0;
-  coerce_value(raw_val, is_null, v);
-  target = static_cast<signed char>(v);
-}
-void coerce_value(std::string_view raw_val, bool is_null, unsigned char& target) {
-  unsigned int v = 0;
-  coerce_value(raw_val, is_null, v);
-  target = static_cast<unsigned char>(v);
-}
-void coerce_value(std::string_view raw_val, bool is_null, short& target) {
-  int v = 0;
-  coerce_value(raw_val, is_null, v);
-  target = static_cast<short>(v);
-}
-void coerce_value(std::string_view raw_val, bool is_null, unsigned short& target) {
-  unsigned int v = 0;
-  coerce_value(raw_val, is_null, v);
-  target = static_cast<unsigned short>(v);
-}
-void coerce_value(std::string_view raw_val, bool is_null, long& target) {
-  if constexpr (sizeof(long) == sizeof(int)) {
-    int v = 0;
-    coerce_value(raw_val, is_null, v);
-    target = static_cast<long>(v);
-  } else {
-    long long v = 0;
-    coerce_value(raw_val, is_null, v);
-    target = static_cast<long>(v);
-  }
-}
-void coerce_value(std::string_view raw_val, bool is_null, unsigned long& target) {
-  if constexpr (sizeof(unsigned long) == sizeof(unsigned int)) {
-    unsigned int v = 0;
-    coerce_value(raw_val, is_null, v);
-    target = static_cast<unsigned long>(v);
-  } else {
-    unsigned long long v = 0;
-    coerce_value(raw_val, is_null, v);
-    target = static_cast<unsigned long>(v);
-  }
-}
 
 void coerce_value(std::string_view raw_val, bool is_null, float& target) {
   if (is_null) {

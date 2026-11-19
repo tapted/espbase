@@ -18,24 +18,48 @@ class ArrayDocument;
 template <typename Callback>
 class StreamArrayDocument;
 
-// Out-of-line scalar emitters implemented in document.cpp
-void write_json_value(Buffer& buffer, long long value);
-void write_json_value(Buffer& buffer, unsigned long long value);
-void write_json_value(Buffer& buffer, long value);
-void write_json_value(Buffer& buffer, unsigned long value);
+// Core out-of-line scalar emitters implemented in document.cpp
 void write_json_value(Buffer& buffer, int value);
 void write_json_value(Buffer& buffer, unsigned int value);
-void write_json_value(Buffer& buffer, short value);
-void write_json_value(Buffer& buffer, unsigned short value);
-void write_json_value(Buffer& buffer, signed char value);
-void write_json_value(Buffer& buffer, unsigned char value);
+void write_json_value(Buffer& buffer, long long value);
+void write_json_value(Buffer& buffer, unsigned long long value);
 void write_json_value(Buffer& buffer, double value);
-void write_json_value(Buffer& buffer, float value);
 void write_json_value(Buffer& buffer, bool value);
 void write_json_value(Buffer& buffer, std::nullptr_t);
 void write_json_value(Buffer& buffer, const char* value);
 void write_json_value(Buffer& buffer, std::string_view value);
 void write_json_value(Buffer& buffer, const std::string& value);
+
+// Inlined delegating overloads to avoid trampoline functions in document.o
+inline void write_json_value(Buffer& buffer, short value) {
+  write_json_value(buffer, static_cast<int>(value));
+}
+inline void write_json_value(Buffer& buffer, unsigned short value) {
+  write_json_value(buffer, static_cast<unsigned int>(value));
+}
+inline void write_json_value(Buffer& buffer, signed char value) {
+  write_json_value(buffer, static_cast<int>(value));
+}
+inline void write_json_value(Buffer& buffer, unsigned char value) {
+  write_json_value(buffer, static_cast<unsigned int>(value));
+}
+inline void write_json_value(Buffer& buffer, long value) {
+  if constexpr (sizeof(long) == sizeof(int)) {
+    write_json_value(buffer, static_cast<int>(value));
+  } else {
+    write_json_value(buffer, static_cast<long long>(value));
+  }
+}
+inline void write_json_value(Buffer& buffer, unsigned long value) {
+  if constexpr (sizeof(unsigned long) == sizeof(unsigned int)) {
+    write_json_value(buffer, static_cast<unsigned int>(value));
+  } else {
+    write_json_value(buffer, static_cast<unsigned long long>(value));
+  }
+}
+inline void write_json_value(Buffer& buffer, float value) {
+  write_json_value(buffer, static_cast<double>(value));
+}
 
 // Fallback template for lambdas (printers, array emitters) and nested documents
 template <typename T>

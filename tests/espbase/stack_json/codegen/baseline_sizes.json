@@ -6,6 +6,33 @@
     "linked_net_total": 16844,
     "filesize": 31744
   },
+  "library": {
+    "buffer": {
+      "text": 911,
+      "rodata": 126,
+      "total": 1037
+    },
+    "document": {
+      "text": 2887,
+      "rodata": 30,
+      "total": 2917
+    },
+    "parser": {
+      "text": 4799,
+      "rodata": 405,
+      "total": 5204
+    },
+    "pretty_buffer": {
+      "text": 879,
+      "rodata": 94,
+      "total": 973
+    },
+    "printer": {
+      "text": 765,
+      "rodata": 50,
+      "total": 815
+    }
+  },
   "snippets": {
     "builder_arrays": {
       "template": {

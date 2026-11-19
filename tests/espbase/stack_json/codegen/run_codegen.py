@@ -488,6 +488,14 @@ def main():
 
     # 1. Compile library objects
     lib_objs = compile_library_objects(stack_json_src, build_dir, compiler, include_dirs)
+    lib_data = {}
+    for obj in lib_objs:
+        sizes, _ = parse_sections(obj, objdump, cxxfilt)
+        lib_data[obj.stem] = {
+            "text": sizes["text"],
+            "rodata": sizes["rodata"],
+            "total": sizes["total"]
+        }
 
     # 2. Build empty baseline executable for CRT subtraction
     empty_sizes = build_empty_executable(build_dir, compiler, objdump)
@@ -524,6 +532,7 @@ def main():
             "linked_net_total": corpus_linked["net_total"],
             "filesize": corpus_linked["raw"].get("filesize", 0)
         },
+        "library": lib_data,
         "snippets": {}
     }
     for r in results:
@@ -667,7 +676,20 @@ def main():
     print(f" Net ROData (.rdata): {c_net_rodata:>6} B")
     print(f" Net Total Footprint: {c_net_tot:>6} B{c_diff_str}")
     print(f" Total Binary Size  : {c_filesize:>6} B on disk (including CRT & PE headers)")
-    print(f"================================================================================================================\n")
+    print(f"================================================================================================================")
+
+    if lib_data:
+        print(f"\n LIBRARY TRANSLATION UNITS (.o)")
+        print(f" {'Object':<20} {'Code (.text)':>14} {'ROData':>10} {'Total':>10}  {'Diff vs Base':>14}")
+        print(" " + "-" * 74)
+        for lib_name, lsz in sorted(lib_data.items()):
+            b_lib = baseline_data.get("library", {}).get(lib_name, {})
+            diff_str = "-"
+            if b_lib and "total" in b_lib:
+                d = lsz["total"] - b_lib["total"]
+                diff_str = f"{'+' if d > 0 else ''}{d} B"
+            print(f" {lib_name + '.o':<20} {lsz['text']:>12} B {lsz['rodata']:>8} B {lsz['total']:>8} B  {diff_str:>14}")
+        print(f"================================================================================================================\n")
 
     report_lines.extend([
         f"| **TOTAL (Isolated Sum)** | **{tot_tmpl_bytes} B** | **{tot_net_linked_sum} B** | | | **{tot_diff_str}** | |",
@@ -680,6 +702,25 @@ def main():
         f"- **Net Read-Only Data (`.rdata`):** `{c_net_rodata} B`",
         f"- **Net Total stack_json Footprint:** **`{c_net_tot} B`**{c_diff_str}",
         f"- **Total Executable Size on Disk:** `{c_filesize} B`",
+    ])
+
+    if lib_data:
+        report_lines.extend([
+            "",
+            "### Precompiled Library Translation Units",
+            "",
+            "| Library Object | Code (.text) | ROData | Total | Diff vs Base |",
+            "|:---|---:|---:|---:|---:|",
+        ])
+        for lib_name, lsz in sorted(lib_data.items()):
+            b_lib = baseline_data.get("library", {}).get(lib_name, {})
+            diff_str = "-"
+            if b_lib and "total" in b_lib:
+                d = lsz["total"] - b_lib["total"]
+                diff_str = f"{'+' if d > 0 else ''}{d} B"
+            report_lines.append(f"| `{lib_name}.o` | {lsz['text']} B | {lsz['rodata']} B | **{lsz['total']} B** | {diff_str} |")
+
+    report_lines.extend([
         "",
         "---",
         "",
