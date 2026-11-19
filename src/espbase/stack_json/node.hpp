@@ -13,9 +13,10 @@ class NodeBase {
 
   void on_emit() { emitted_ = true; }
 
- public:
-  virtual ~NodeBase() = default;
+ protected:
+  ~NodeBase() = default;
 
+ public:
   void reset() { emitted_ = false; }
 
   bool is_emitted() const { return emitted_; }

@@ -17,10 +17,9 @@ class ParseNodeBase {
   bool is_catch_all_ = false;
 
   explicit constexpr ParseNodeBase(bool catch_all = false) : is_catch_all_(catch_all) {}
+  ~ParseNodeBase() = default;
 
  public:
-  virtual ~ParseNodeBase() = default;
-
   const PathBase& path() const { return path_; }
   // Whether this node is a catch-all (matches any path). Used for dynamic nodes.
   bool is_catch_all() const { return is_catch_all_; }

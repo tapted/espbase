@@ -10,9 +10,11 @@ This document summarizes the goals, methodology, optimization milestones, archit
 - **Embedded Target Focus:** Designed for microcontrollers (ESP32, ESP-IDF) where instruction flash and I-cache lines are constrained.
 - **Constraints:**
   - Zero breaking changes to the public-facing API (`sjson::json_parser`, `sjson::bind`, `sjson::stack_json`, `sjson::node`, `sjson::node_if`, `sjson::path`, etc.).
-  - All unit tests in `espbase_tests.exe` (57 tests across 11 test suites) must pass cleanly.
+  - All unit tests in `espbase_tests.exe` (63 tests across 12 test suites) must pass cleanly.
   - Release compilation uses `-std=gnu++26 -Os -ffunction-sections -fdata-sections -fno-rtti`.
-  - Representative measurement via an automated 16-snippet corpus covering typical production usage patterns.
+  - Dual-tier representative measurement via an automated 16-snippet corpus covering typical production usage patterns:
+    1. **Isolated Template Call-Site Bloat:** Section bytes generated in snippet object files (`.o`).
+    2. **Complete Dead-Code-Eliminated (DCE) Linked Footprint:** Net executable bytes linked with tree-shaken library objects (`-Wl,--gc-sections -Wl,-s`), subtracted against CRT baseline (`empty.exe`).
 
 ---
 
@@ -23,9 +25,13 @@ The analysis toolchain is located in this directory:
   - Generates assembly (`.annotated.s`) with `-fverbose-asm` and `-g` for line-by-line C++ to assembly correlation demangled via `llvm-cxxfilt`.
   - Generates object files (`.o`) and extracts exact `.text` and `.rodata` section bytes via `llvm-objdump -h`.
   - Disassembles and dumps sorted symbols (`.symbols.txt`) per snippet to pinpoint exact bloat contributors.
+  - Pre-compiles library translation units (`buffer.cpp`, `document.cpp`, `parser.cpp`, `pretty_buffer.cpp`, `printer.cpp`) with `-Os -ffunction-sections -fdata-sections -fno-rtti`.
+  - Builds a baseline empty executable (`empty.exe`) to measure fixed C-runtime (CRT) overhead.
+  - Links individual minimal executables (`<snippet>.linked.exe`) with `-Wl,--gc-sections -Wl,-s` to calculate net application footprint (snippet code + transitively pulled library dependencies).
+  - Links a complete multi-snippet corpus binary (`stack_json_corpus_stripped.exe`) measuring real-world deduplication of shared vtables and library helpers across an entire application.
   - Outputs a consolidated summary report (`codegen_report.md`).
   - Supports `--save-baseline` and `--diff` to verify changes quantitatively.
-- **`baseline_sizes.json`:** JSON record of reference snippet sizes.
+- **`baseline_sizes.json`:** JSON record of reference snippet template sizes and linked DCE footprints.
 - **`snippets/`:** 16 self-contained snippet translation units:
   - Builders: `builder_primitive_scalar`, `builder_primitive_multi`, `builder_strings`, `builder_nested_paths`, `builder_conditional`, `builder_arrays`, `builder_nested_doc`, `builder_stack_builder`.
   - Parsers: `parser_primitive_scalar`, `parser_primitive_multi`, `parser_strings`, `parser_nested_paths`, `parser_dynamic_node`, `parser_sub_parser`, `parser_unknown_catchall`, `parser_entity_payload`.
@@ -62,7 +68,7 @@ Two subsequent approaches were attempted to remove virtual lookups from nodes:
    - Introduced `PathBase cached_path_` and `virtual PathBase get_path() const = 0`, populating `cached_path_ = get_path();` inside `reset()`.
    - *Failure mechanism:* Added 16 bytes of storage to every node, added a vtable slot, and on Windows x64 ABI, returning a 16-byte struct required caller stack allocation, passing a hidden pointer in `%rcx`, and copying 16 bytes. Corpus grew to **12,840 B** (+299 B regression).
 
-### Phase 5: Deferred Non-Virtual Binding & Loop Hoisting (Current State)
+### Phase 5: Deferred Non-Virtual Binding & Loop Hoisting (`0e0201f`)
 - **Deferred `init_node()` for Parser Nodes:**
   - `ParseNodeBase` stores `const PathBase* path_ptr_ = nullptr;`. `path()` is non-virtual (`return *path_ptr_;`).
   - `BindNode` and `DynamicNode` keep `= default` constructors (no custom copy/move logic).
@@ -81,7 +87,7 @@ Two subsequent approaches were attempted to remove virtual lookups from nodes:
   - Updated `node()`, `node_if()`, and `bind()` to take `PathT&&` and `ValueT&&`, eliminating double-copies of `StaticPath`.
 - **Result:** Total corpus footprint dropped to **11,729 B** (-1,111 B vs 12,840 B baseline, -45.6% vs original baseline).
 
-### Pass 3: Out-of-Line Scalars, ValueNodeBaseT, and Trivially Copyable StaticPath (9,027 B)
+### Phase 6: Out-of-Line Scalars, ValueNodeBaseT, and Trivially Copyable StaticPath (`a23f3da`)
 - **Out-of-Line Scalar Serialization (`value.hpp` & `document.cpp`):**
   - Declared non-template, out-of-line overloads for all fundamental scalar types (`int`, `unsigned int`, `short`, `unsigned short`, `long`, `unsigned long`, `long long`, `unsigned long long`, `float`, `double`, `bool`, `nullptr_t`, `const char*`, `std::string_view`, `const std::string&`).
   - Constrained generic fallback via C++20 `requires` to only match lambdas and nested Documents.
@@ -100,56 +106,90 @@ Two subsequent approaches were attempted to remove virtual lookups from nodes:
 - **Array Type Decay in `node()` (`node.hpp`):**
   - Array string literals (`"foo"`, `"bar"`) now decay to `const char*` instead of deducing distinct array references (`char const (&)[N]`).
   - Prevents combinatorial template bloat and duplicate vtables across string literals of differing lengths.
-- **Result:** Total corpus footprint dropped from **11,729 B to 9,027 B** (**-2,702 B net saving**, -23.0% in this pass, **-58.1% cumulative** from 21,548 B starting baseline).
+- **Result:** Total isolated template bloat dropped from **11,729 B to 9,027 B** (**-2,702 B net saving**, -23.0% in this pass, **-58.1% cumulative** from 21,548 B starting baseline).
+
+### Phase 7: Dual-Tier Linked DCE Tracking & Library Decomposition (`ea656be`, `cdd68e1`)
+- **Dual-Tier Bloat Tracking:** Added tracking of complete, dead-code-eliminated linked binaries (`<snippet>.linked.exe` and `stack_json_corpus_stripped.exe`) against `empty.exe` CRT baseline.
+- **Functional Decomposition & Deduplication in `parser.cpp`:**
+  - Factored duplicate `if (depth < path_stack.size())` node matching, catch-all handling, and assignment blocks into a unified `assign_value` closure.
+  - Extracted shared pointer-based structural brace scanner `find_structural_end(std::string_view)` used by both `next_array_token` and `capture_structural_value()`.
+  - Streamlined minified and whitespace-delimited colon checks.
+- **Result:** Full corpus linked executable code shrank by **-64 B** (`.text`), net total footprint dropped to **17,460 B** (**-60 B**), and `parser_dynamic_node` linked size shrank by **-76 B**, while benchmark parse throughput increased by **+10% to +40%**.
+
+### Phase 8: Non-Virtual Destructors & Scalar Consolidation (Current State)
+- **Non-Virtual Node Base Destructors (`node.hpp`, `parser.hpp`):**
+  - Nodes in `stack_json` are automatic stack variables lifetime-managed inside `std::tuple`; they are never allocated on the heap or deleted via base pointers.
+  - Replaced `virtual ~NodeBase()` and `virtual ~ParseNodeBase()` with non-virtual protected destructors (`protected: ~NodeBase() = default;`, `protected: ~ParseNodeBase() = default;`).
+  - Completely eliminated deleting destructor (`D0`) thunks, complete object destructor entries, and references to `operator delete(void*)`.
+  - Shrank all `ValueNode` and `BindNode` vtables by 2 pointer slots (16 bytes on 64-bit, 8 bytes on 32-bit), saving **-857 B** of template bloat across the 16 snippets.
+- **Scalar Formatting & Coercion Consolidation (`document.cpp`, `parser.cpp`):**
+  - In `document.cpp`, scalar `write_json_value` overloads for `char`, `short`, and `long` route directly through 32-bit (`int`/`unsigned int`) or 64-bit (`long long`/`unsigned long long`) core formatters, eliminating 6 duplicate integer formatting loops.
+  - In `parser.cpp`, scalar `coerce_value` overloads for `char`, `short`, and `long` route through core integer coercions, eliminating 9 redundant instantiations of `std::from_chars` and `<charconv>` traits.
+  - Replaced the 11-step branching ladder in `num_digits_u64` with a 32-bit fast path and compact loop for >4GB values.
+- **Result:**
+  - Isolated template bloat dropped from **9,027 B to 8,170 B** (**-857 B**, **-9.5%** in this pass; **-62.1% cumulative** from 21,548 B starting baseline).
+  - Full corpus linked binary footprint dropped from **17,460 B to 16,844 B** (**-616 B**).
+  - Total binary executable on disk dropped from **32,256 B to 31,744 B** (**-512 B**).
+  - Benchmark parse throughput increased to **249.6 MB/s** average (with primitives parse reaching **305 MB/s**).
 
 ---
 
-## 4. Current Corpus Summary (9,027 B)
+## 4. Current Corpus Summary (8,170 B Template / 16,844 B Linked)
 
-| Snippet Case | Code (.text) | ROData | Total | Net vs Baseline (11,729 B) |
-|:---|---:|---:|---:|---:|
-| `builder_arrays` | 623 B | 121 B | **744 B** | -318 B |
-| `builder_conditional` | 284 B | 108 B | **392 B** | -203 B |
-| `builder_nested_doc` | 497 B | 221 B | **718 B** | -504 B |
-| `builder_nested_paths` | 293 B | 134 B | **427 B** | -294 B |
-| `builder_primitive_multi` | 509 B | 227 B | **736 B** | -293 B |
-| `builder_primitive_scalar` | 150 B | 55 B | **205 B** | -37 B |
-| `builder_stack_builder` | 291 B | 104 B | **395 B** | -142 B |
-| `builder_strings` | 377 B | 184 B | **561 B** | -205 B |
-| `parser_dynamic_node` | 399 B | 50 B | **449 B** | +24 B |
-| `parser_entity_payload` | 753 B | 214 B | **967 B** | -190 B |
-| `parser_nested_paths` | 340 B | 118 B | **458 B** | -84 B |
-| `parser_primitive_multi` | 624 B | 195 B | **819 B** | -170 B |
-| `parser_primitive_scalar` | 196 B | 46 B | **242 B** | -33 B |
-| `parser_strings` | 468 B | 146 B | **614 B** | -156 B |
-| `parser_sub_parser` | 679 B | 134 B | **813 B** | -37 B |
-| `parser_unknown_catchall` | 401 B | 86 B | **487 B** | -60 B |
-| **TOTAL CORPUS** | **6884 B** | **2143 B** | **9027 B** | **-2702 B (-23.0%)** |
+### Dual-Tier Size Breakdown
+- **Isolated Template Call-Site Total:** **`8,170 B`** (`6,290 B` code, `1,880 B` rodata)
+- **Full Corpus Linked Binary (`stack_json_corpus_stripped.exe`):**
+  - Net Code (`.text`): **`13,792 B`**
+  - Net Read-Only Data (`.rodata`): **`3,052 B`**
+  - Net Total Footprint: **`16,844 B`** (**-616 B** vs prior baseline)
+  - Total File on Disk: **`31,744 B`** (including CRT and PE headers, **-512 B** vs prior baseline)
+
+| Snippet Case | Template .o | Net Linked DCE | Linked .text | Linked .rdata | Top Bloat Contributor |
+|:---|---:|---:|---:|---:|:---|
+| `builder_arrays` | 701 B | **3,736 B** | 3,312 B | 424 B | `sjson::SpanArrayDocument<int const>::emit` |
+| `builder_conditional` | 349 B | **3,456 B** | 3,072 B | 384 B | `snippet_builder_conditional` |
+| `builder_nested_doc` | 632 B | **3,760 B** | 3,280 B | 480 B | `snippet_builder_nested_doc` |
+| `builder_nested_paths` | 384 B | **3,380 B** | 2,992 B | 388 B | `snippet_builder_nested_paths` |
+| `builder_primitive_multi` | 651 B | **4,588 B** | 4,016 B | 572 B | `snippet_builder_primitive_multi` |
+| `builder_primitive_scalar` | 183 B | **3,172 B** | 2,848 B | 324 B | `snippet_builder_primitive_scalar` |
+| `builder_stack_builder` | 352 B | **3,448 B** | 3,072 B | 376 B | `snippet_builder_stack_builder` |
+| `builder_strings` | 497 B | **3,428 B** | 2,976 B | 452 B | `snippet_builder_strings` |
+| `parser_dynamic_node` | 427 B | **4,988 B** | 3,968 B | 1,020 B | `snippet_parser_dynamic_node` |
+| `parser_entity_payload` | 882 B | **5,332 B** | 4,048 B | 1,284 B | `snippet_parser_entity_payload` |
+| `parser_nested_paths` | 415 B | **4,528 B** | 3,472 B | 1,056 B | `snippet_parser_nested_paths` |
+| `parser_primitive_multi` | 734 B | **5,308 B** | 4,032 B | 1,276 B | `snippet_parser_primitive_multi` |
+| `parser_primitive_scalar` | 220 B | **4,336 B** | 3,344 B | 992 B | `snippet_parser_primitive_scalar` |
+| `parser_strings` | 550 B | **5,108 B** | 3,920 B | 1,188 B | `snippet_parser_strings` |
+| `parser_sub_parser` | 749 B | **5,160 B** | 3,936 B | 1,224 B | `sjson::DynamicNodeBase::parse` |
+| `parser_unknown_catchall` | 444 B | **4,600 B** | 3,568 B | 1,032 B | `snippet_parser_unknown_catchall` |
+| **TOTAL (Isolated Sum)** | **8,170 B** | **68,328 B** | | | *(Deduplicated corpus: **16,844 B**)* |
 
 ---
 
 ## 5. Potential Avenues for Further Investigation
 
-### A. Non-Virtual Node Descriptors (VTable Elimination)
-- Currently, each instantiation of `ValueNode<StaticPath<N>, T>` and `BindNode<StaticPath<N>, T>` generates a vtable (40 B in `.rodata` under `-fno-rtti`) containing destructor and `emit_value` / `assign` pointers.
+### A. Non-Virtual Node Descriptors (Function Pointers vs VTables)
+- Currently, each instantiation of `ValueNode<StaticPath<N>, T>` and `BindNode<StaticPath<N>, T>` generates a vtable (now 32 B in `.rodata` under `-fno-rtti`) containing `emit_value` / `assign` and `path()` pointers.
 - *Investigation:* Could `NodeBase` and `ParseNodeBase` use a plain struct descriptor with a function pointer rather than C++ virtual dispatch?
   ```cpp
   struct NodeDescriptor {
-    const PathBase* path;
+    PathBase path;
     void (*emit)(const void* node_data, Buffer& buffer);
   };
   ```
-  If nodes with identical payload types share static function pointers without distinct vtables, `.rodata` footprint across multi-node parsers could drop significantly.
+  If nodes with identical payload types share static function pointers without distinct vtables, `.rodata` footprint across multi-node parsers and builders could drop significantly.
 
-### B. Flattening `Document::emit_value` and `Parser::parse`
-- In `parser_primitive_scalar` and `builder_primitive_scalar`, inspect whether marking `Parser::parse` or `Document::emit_value` with `__attribute__((always_inline))` allows the compiler to collapse temporary stack frames and eliminate intermediate pointer array allocation entirely for 1-node cases.
-- Conversely, for $N > 3$ nodes, investigate an out-of-line helper to construct the `std::span` to reduce stack allocation overhead in the caller.
+### B. Direct Child Emission for Flat `Document<Nodes...>`
+- For `Document<Nodes...>` where all `Nodes` statically have depth 1 (i.e. `ValueNode<StaticPath<1>, ...>`), evaluating whether calling an inline child emitter directly in `Document::emit(buffer)` can bypass pointer-array construction, `std::span` framing, and `emit_json_nodes` function overhead for the 90%+ case of flat JSON schemas.
 
 ### C. Compact / Packed Static Path Representation
 - `StaticPath<N>` currently stores an array of `std::string_view` (16 bytes each). A depth-3 path requires 48 bytes of storage on the stack.
 - *Investigation:* Since path keys are almost exclusively string literals (`const char*`) known at compile time, storing an array of `const char*` plus a single length array or null-separated tokens could reduce node stack footprint by ~50%, improving register allocation and reducing stack frame sizes in deep tree builders.
 
-### D. In-Depth Inspection of `builder_nested_paths`
-- `builder_nested_paths` is currently the only snippet larger (+127 B) than its baseline state.
-- Inspecting `builder_nested_paths.annotated.s` with the newly added `-g` flag reveals stack spills (`pushq %r15..%rbx`, allocating 512 bytes on the stack).
+### D. In-Depth Inspection of Stack Spills in `builder_nested_paths`
+- `builder_nested_paths` has relatively high stack allocation in `builder_nested_paths.annotated.s`.
 - Identify whether the temporaries generated by `sjson::node(path(...), val)` can be constructed directly in-place within `std::tuple` using piecewise construction or a builder helper that avoids moving whole nodes.
+
+### E. Out-of-Line Pointer Span Setup
+- In both `Document::emit_value` and `Parser::parse`, constructing the array of pointers (`std::array<NodeBase*, N>` and `std::array<ParseNodeBase*, N>`) produces boilerplate at every call site.
+- Investigate moving the array construction into an out-of-line helper for $N > 3$ to reduce caller stack frame size.

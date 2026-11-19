@@ -91,13 +91,24 @@ python tests/espbase/stack_json/codegen/run_codegen.py --diff
 * **Shared `find_structural_end`:** Extracted a single pointer-based scan for matching braces/brackets (`{...}`, `[...]`), shared between `DynamicNodeBase::next_array_token` and `capture_structural_value()`.
 * **Streamlined Colon Checks:** Unified minified and whitespace-delimited colon detection into a clean 6-line check, eliminating 2 nested branches.
 
+### 9. Non-Virtual Node Base Destructors & VTable Compaction
+* Nodes in `stack_json` are automatic stack variables lifetime-managed inside `std::tuple`; they are never dynamically allocated or deleted via base pointers.
+* Replaced `virtual ~NodeBase()` and `virtual ~ParseNodeBase()` with non-virtual protected destructors (`~NodeBase() = default;`, `~ParseNodeBase() = default;`).
+* Eliminates deleting destructor (`D0`) thunks, complete object destructor entries, and references to `operator delete(void*)`.
+* Shrank all `ValueNode` and `BindNode` vtables by 2 pointer slots (16 bytes on 64-bit, 8 bytes on 32-bit), reducing isolated template bloat by **-857 B** across the corpus.
+
+### 10. Scalar Formatting & Coercion Consolidation
+* In `document.cpp`, scalar `write_json_value` overloads for `char`, `short`, and `long` route directly through 32-bit (`int`/`unsigned int`) or 64-bit (`long long`/`unsigned long long`) core formatters, eliminating 6 duplicate integer formatting loops.
+* In `parser.cpp`, scalar `coerce_value` overloads for `char`, `short`, and `long` route through core integer coercions, eliminating 9 redundant instantiations of `std::from_chars` and `<charconv>` traits.
+* Replaced the 11-step branching ladder in `num_digits_u64` with a 32-bit fast path and compact loop for >4GB values.
+
 ---
 
 ## 5. Dual-Tier Binary Size & Codegen Tracking
 
 Measuring only snippet object files (`snippet.o`) creates a gap: moving template code or tree-shakable helpers into library translation units (`buffer.cpp`, `document.cpp`, `parser.cpp`, `pretty_buffer.cpp`, `printer.cpp`) reduces snippet object sizes, but can hide the size of library code that gets linked into the final application.
 
-`run_codegen.py` now tracks both layers automatically:
+`run_codegen.py` tracks both layers automatically:
 1. **Isolated Template Call-Site Bloat (`snippet.o`):**
    - Measures exact `.text` and `.rodata` generated per call site under `-Os -ffunction-sections -fdata-sections -fno-rtti`.
    - Produces demangled, annotated assembly diffs (`.annotated.s`) and symbol contribution rankings.
@@ -108,16 +119,16 @@ Measuring only snippet object files (`snippet.o`) creates a gap: moving template
    - Compiles and links all 16 snippets simultaneously to measure total deduplicated footprint (shared vtables and library helpers across an entire application).
 
 ### Current Size Baseline
-- **Corpus Template Total:** `9,027 B` across all 16 snippets.
-- **Full Corpus Linked Footprint:** `13,984 B` code, `3,476 B` rodata (`17,460 B` net total, **-60 B** vs prior baseline; `32,256 B` total binary on disk including CRT and PE headers).
+- **Corpus Template Total:** **`8,170 B`** across all 16 snippets (**-857 B** vs prior 9,027 B baseline).
+- **Full Corpus Linked Footprint:** **`13,792 B`** code, **`3,052 B`** rodata (**`16,844 B`** net total, **-616 B** vs prior 17,460 B baseline; **`31,744 B`** total binary on disk including CRT and PE headers).
 
 ---
 
 ## 6. Status & Verification Results
 
 * **Unit Tests:** 100% pass rate (**63 / 63** tests passing in `espbase_tests.exe`).
-* **Code Size Impact:** **-60 Bytes** net linked binary footprint reduction across the corpus.
-* **Performance:** **+10% to +40%** throughput improvements across all benchmark workloads with 0 regressions.
+* **Code Size Impact:** **-857 B** template bloat reduction and **-616 B** net linked binary reduction.
+* **Performance:** Average **`251.3 MB/s`** build, **`241.9 MB/s`** parse (~**2.13M** ops/sec) with primitives parse breaking **`305 MB/s`** (**3.45M** ops/sec).
 * **Symbol Resolution:** Working cleanly in `samply` and `inspect_trace.py` via generated PDB.
 
 ---

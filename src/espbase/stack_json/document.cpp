@@ -104,17 +104,13 @@ static inline constexpr std::size_t num_digits_u64(uint64_t x) {
   if (x <= 0xFFFFFFFFULL) {
     return num_digits_u32(static_cast<uint32_t>(x));
   }
-  if (x < 10000000000ULL) return 10;
-  if (x < 100000000000ULL) return 11;
-  if (x < 1000000000000ULL) return 12;
-  if (x < 10000000000000ULL) return 13;
-  if (x < 100000000000000ULL) return 14;
-  if (x < 1000000000000000ULL) return 15;
-  if (x < 10000000000000000ULL) return 16;
-  if (x < 100000000000000000ULL) return 17;
-  if (x < 1000000000000000000ULL) return 18;
-  if (x < 10000000000000000000ULL) return 19;
-  return 20;
+  std::size_t digits = 10;
+  x /= 10000000000ULL;
+  while (x > 0) {
+    digits++;
+    x /= 10;
+  }
+  return digits;
 }
 
 template <typename UIntT>
@@ -167,6 +163,12 @@ static inline void write_signed(Buffer& buffer, IntT value) {
   buffer.commit(len);
 }
 
+void write_json_value(Buffer& buffer, int value) {
+  write_signed(buffer, value);
+}
+void write_json_value(Buffer& buffer, unsigned int value) {
+  write_unsigned(buffer, value);
+}
 void write_json_value(Buffer& buffer, long long value) {
   write_signed(buffer, value);
 }
@@ -174,28 +176,30 @@ void write_json_value(Buffer& buffer, unsigned long long value) {
   write_unsigned(buffer, value);
 }
 void write_json_value(Buffer& buffer, long value) {
-  write_signed(buffer, value);
+  if constexpr (sizeof(long) == sizeof(int)) {
+    write_json_value(buffer, static_cast<int>(value));
+  } else {
+    write_json_value(buffer, static_cast<long long>(value));
+  }
 }
 void write_json_value(Buffer& buffer, unsigned long value) {
-  write_unsigned(buffer, value);
-}
-void write_json_value(Buffer& buffer, int value) {
-  write_signed(buffer, value);
-}
-void write_json_value(Buffer& buffer, unsigned int value) {
-  write_unsigned(buffer, value);
+  if constexpr (sizeof(unsigned long) == sizeof(unsigned int)) {
+    write_json_value(buffer, static_cast<unsigned int>(value));
+  } else {
+    write_json_value(buffer, static_cast<unsigned long long>(value));
+  }
 }
 void write_json_value(Buffer& buffer, short value) {
-  write_signed(buffer, value);
+  write_json_value(buffer, static_cast<int>(value));
 }
 void write_json_value(Buffer& buffer, unsigned short value) {
-  write_unsigned(buffer, value);
+  write_json_value(buffer, static_cast<unsigned int>(value));
 }
 void write_json_value(Buffer& buffer, signed char value) {
-  write_signed(buffer, static_cast<int>(value));
+  write_json_value(buffer, static_cast<int>(value));
 }
 void write_json_value(Buffer& buffer, unsigned char value) {
-  write_unsigned(buffer, static_cast<unsigned int>(value));
+  write_json_value(buffer, static_cast<unsigned int>(value));
 }
 void write_json_value(Buffer& buffer, double value) {
   Printer::printx(buffer, "%g", value);
