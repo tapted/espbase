@@ -1,27 +1,10 @@
 #pragma once
 
-#include <array>
-#include <string>  // for a static_assert..
 #include <string_view>
 #include <type_traits>
 #include <utility>
 
 namespace sjson {
-
-namespace detail {
-// Safely converts arguments to string_view, intercepting null pointers
-template <typename T>
-constexpr std::string_view safe_string_view(T&& arg) {
-  // Use remove_reference_t instead of decay_t.
-  // This ensures string literals (arrays) evaluate to false and bypass the check.
-  using BaseT = std::remove_reference_t<T>;
-
-  if constexpr (std::is_pointer_v<BaseT>) {
-    if (arg == nullptr) return "null_path_error";
-  }
-  return std::string_view(std::forward<T>(arg));
-}
-}  // namespace detail
 
 class PathBase {
  protected:
@@ -45,63 +28,16 @@ class PathBase {
   }
 };
 
-template <std::size_t Depth>
-class StaticPath {
- private:
-  std::array<std::string_view, Depth> elements_{};
+}  // namespace sjson
 
-  // Forward references safely down the chain
-  template <std::size_t... I, typename... Args>
-  auto append_impl(std::index_sequence<I...>, Args&&... args) const {
-    return StaticPath<Depth + sizeof...(Args)>(elements_[I]..., std::forward<Args>(args)...);
-  }
+// Pull in StaticPath, PathView, and sjson::detail::safe_string_view
+#include "espbase/stack_json/detail/path_impl.hpp"
 
- public:
-  static constexpr std::size_t static_depth = Depth;
-
-  constexpr StaticPath() = default;
-
-  // The variadic constructor with a constraint to prevent hijacking the copy constructor.
-  template <typename... Args, typename = std::enable_if_t<
-                                  sizeof...(Args) != 1 ||
-                                  (!std::is_same_v<std::decay_t<Args>, StaticPath<Depth>> && ...)>>
-  constexpr StaticPath(Args&&... args)
-      : elements_{{detail::safe_string_view(std::forward<Args>(args))...}} {
-    static_assert(sizeof...(Args) == Depth, "Depth mismatch");
-
-    // Robustness Guardrail: Block temporary std::strings from being bound!
-    static_assert((... && !(std::is_same_v<std::decay_t<Args>, std::string> &&
-                            std::is_rvalue_reference_v<Args&&>)),
-                  "StackJson: Cannot bind a path to a temporary std::string! It will dangle.");
-  }
-
-  constexpr std::size_t depth() const { return Depth; }
-  constexpr std::string_view get_element(std::size_t index) const { return elements_[index]; }
-  constexpr const std::string_view* data() const { return elements_.data(); }
-
-  constexpr operator PathBase() const { return PathBase(elements_.data(), Depth); }
-  constexpr PathBase to_path() const { return PathBase(elements_.data(), Depth); }
-
-  bool matches_parent(const PathBase& parent) const {
-    return to_path().matches_parent(parent);
-  }
-
-  // Forward arguments when extending the path
-  template <typename... Args>
-  auto operator()(Args&&... args) const {
-    return append_impl(std::make_index_sequence<Depth>{}, std::forward<Args>(args)...);
-  }
-};
+namespace sjson {
 
 template <typename... Args>
 auto path(Args&&... args) {
   return StaticPath<sizeof...(Args)>(std::forward<Args>(args)...);
 }
-
-// A lightweight view used during recursive traversal to represent the "open" parent
-class PathView : public PathBase {
- public:
-  constexpr PathView(const PathBase& orig, std::size_t limit) : PathBase(orig.data(), limit) {}
-};
 
 }  // namespace sjson

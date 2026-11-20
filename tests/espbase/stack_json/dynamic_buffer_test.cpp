@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include "espbase/stack_json/document.hpp"
+#include "espbase/stack_json/node.hpp"
 
 using namespace sjson;
 
@@ -16,7 +17,6 @@ TEST(DynamicBufferTest, GrowsAsNeeded) {
 
   doc.emit(raw_buffer);
 
-  EXPECT_STREQ(
-      raw_buffer.c_str(),
-      R"({"system":"espuck","wifi":{"ssid":"Home_Network","rssi":-65},"flags":[1,2]})");
+  EXPECT_STREQ(raw_buffer.c_str(),
+               R"({"system":"espuck","wifi":{"ssid":"Home_Network","rssi":-65},"flags":[1,2]})");
 }

@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include "espbase/stack_json/node.hpp"
+
 using namespace sjson;
 
 TEST(BufferTest, CStringBehavior) {

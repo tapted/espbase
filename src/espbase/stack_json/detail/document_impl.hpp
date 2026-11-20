@@ -1,0 +1,114 @@
+#pragma once
+
+#include <span>
+#include <tuple>
+
+#include "espbase/stack_json/array_emitter.hpp"
+#include "espbase/stack_json/detail/node_impl.hpp"
+
+namespace sjson {
+
+size_t emit_json_nodes(Buffer& buffer, std::span<NodeBase*> nodes);
+
+template <typename... Nodes>
+class Document {
+  std::tuple<Nodes...> nodes_;
+
+ public:
+  explicit Document(Nodes&&... nodes) : nodes_(std::forward<Nodes>(nodes)...) {}
+
+  // Extracts the pointers from the tuple into a flat array (to merge with another document)
+  void append_pointers_to(std::span<NodeBase*> dest, std::size_t& count) {
+    auto append = [&]<std::size_t... I>(std::index_sequence<I...>) {
+      // Fold expression with bounds checking
+      ((count < dest.size() ? dest[count++] = &std::get<I>(nodes_) : nullptr), ...);
+    };
+    append(std::make_index_sequence<sizeof...(Nodes)>{});
+  }
+
+  size_t emit_value(Buffer& buffer) {
+    if constexpr (sizeof...(Nodes) == 0) {
+      return buffer.write("{}");
+    } else {
+      std::array<NodeBase*, sizeof...(Nodes)> node_ptrs =
+          [&]<std::size_t... I>(std::index_sequence<I...>) {
+            return std::array<NodeBase*, sizeof...(Nodes)>{&std::get<I>(nodes_)...};
+          }(std::make_index_sequence<sizeof...(Nodes)>{});
+
+      return emit_json_nodes(buffer, node_ptrs);  // The compiled tree traversal function
+    }
+  }
+
+  size_t emit(Buffer& buffer) { return emit_value(buffer); }
+};
+
+template <typename... Elements>
+class ArrayDocument {
+  std::tuple<Elements...> elements_;
+
+ public:
+  explicit ArrayDocument(Elements&&... elems) : elements_(std::forward<Elements>(elems)...) {}
+
+  // TODO: return bool for write failure
+  void emit_value(Buffer& buffer) {
+    buffer.write("[");
+    bool first = true;
+
+    // C++20 lambda generic iteration
+    auto emit_elem = [&](auto& elem) {
+      if (!first) buffer.write(",");
+      write_json_value(buffer, elem);
+      first = false;
+    };
+
+    // Unpack tuple and apply to all elements
+    std::apply([&](auto&... args) { (emit_elem(args), ...); }, elements_);
+
+    buffer.write("]");
+  }
+};
+
+template <typename ElementT>
+class SpanArrayDocument {
+  std::span<ElementT> span_;
+
+ public:
+  explicit SpanArrayDocument(std::span<ElementT> s) : span_(s) {}
+
+  // TODO: return bool for write failure
+  void emit_value(Buffer& buffer) {
+    buffer.write("[");
+    bool first = true;
+
+    for (auto& elem : span_) {
+      if (!first) buffer.write(",");
+      write_json_value(buffer, elem);
+      first = false;
+    }
+    buffer.write("]");
+  }
+};
+
+template <typename Callback>
+class StreamArrayDocument {
+  Callback cb_;
+
+ public:
+  template <typename C>
+  explicit StreamArrayDocument(C&& cb) : cb_(std::forward<C>(cb)) {}
+
+  void emit_value(Buffer& buffer) {
+    buffer.write("[");
+    ArrayEmitter emitter(buffer);
+    cb_(emitter);
+    buffer.write("]");
+  }
+
+  size_t emit(Buffer& buffer) {
+    size_t before = buffer.length();
+    emit_value(buffer);
+    return buffer.length() - before;
+  }
+};
+
+}  // namespace sjson
