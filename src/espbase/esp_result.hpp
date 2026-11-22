@@ -77,6 +77,7 @@ class [[nodiscard]] EspResult : public EspResultBase {
   }
 
   EspResult(T val, ok_tag_t = ok_tag_t{}) : EspResultBase(ESP_OK), value_(std::move(val)) {}
+  constexpr EspResult() : EspResultBase(ESP_ERR_NOT_FINISHED) {}
   constexpr EspResult(EspError e);
 
   T& operator*() { return *value_; }
