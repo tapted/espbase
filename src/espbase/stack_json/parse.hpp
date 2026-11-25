@@ -499,6 +499,7 @@ class DynamicNodeBase : public ParseNodeBase {
 
  private:
   std::string_view next_array_token(bool& is_str);
+  bool next_value(std::string_view& val_to_parse, bool& val_is_null);
 };
 
 }  // namespace sjson
@@ -593,25 +594,9 @@ bool DynamicNodeBase::parse(Nodes&&... nodes) const {
 
 template <typename TargetT>
 inline bool DynamicNodeBase::operator>>(TargetT& target) {
-  if (!is_set_) return false;
-
-  std::string_view val_to_parse = raw_val_;
-  bool val_is_null = is_null_;
-
-  if (!raw_val_.empty() && raw_val_.front() == '[') {
-    if (!iter_started_) {
-      iter_state_ = raw_val_.substr(1);
-      iter_started_ = true;
-    }
-    bool is_str_token = false;
-    val_to_parse = next_array_token(is_str_token);
-    if (val_to_parse.empty()) return false;
-    val_is_null = (val_to_parse == "null");
-  } else {
-    if (iter_started_) return false;
-    iter_started_ = true;
-  }
-
+  std::string_view val_to_parse;
+  bool val_is_null = false;
+  if (!next_value(val_to_parse, val_is_null)) return false;
   coerce_value(val_to_parse, val_is_null, target);
   return true;
 }

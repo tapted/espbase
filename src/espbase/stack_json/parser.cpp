@@ -179,6 +179,27 @@ std::string_view DynamicNodeBase::next_array_token(bool& is_str) {
   return token;
 }
 
+bool DynamicNodeBase::next_value(std::string_view& val_to_parse, bool& val_is_null) {
+  if (!is_set_) return false;
+
+  if (!raw_val_.empty() && raw_val_.front() == '[') {
+    if (!iter_started_) {
+      iter_state_ = raw_val_.substr(1);
+      iter_started_ = true;
+    }
+    bool is_str_token = false;
+    val_to_parse = next_array_token(is_str_token);
+    if (val_to_parse.empty()) return false;
+    val_is_null = (val_to_parse == "null");
+  } else {
+    if (iter_started_) return false;
+    iter_started_ = true;
+    val_to_parse = raw_val_;
+    val_is_null = is_null_;
+  }
+  return true;
+}
+
 std::size_t decode_json_string(std::string_view input, std::span<char> out_buffer) {
   std::size_t out_idx = 0;
   for (std::size_t i = 0; i < input.size() && out_idx < out_buffer.size(); ++i) {
