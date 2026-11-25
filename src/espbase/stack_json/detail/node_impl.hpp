@@ -1,8 +1,8 @@
 #pragma once
 
 #include "espbase/stack_json/buffer.hpp"
+#include "espbase/stack_json/detail/value_impl.hpp"
 #include "espbase/stack_json/path.hpp"
-#include "espbase/stack_json/value.hpp"
 
 namespace sjson {
 

@@ -1,9 +1,8 @@
-#include "espbase/stack_json/document.hpp"
-
 #include <cstring>
 #include <type_traits>
 
 #include "espbase/stack_json/array_emitter.hpp"
+#include "espbase/stack_json/generate.hpp"
 
 namespace sjson {
 

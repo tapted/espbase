@@ -2,8 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include "espbase/stack_json/document.hpp"
-#include "espbase/stack_json/node.hpp"
+#include "espbase/stack_json/generate.hpp"
 
 using namespace sjson;
 

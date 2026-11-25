@@ -1,5 +1,5 @@
 #include <span>
-#include "espbase/stack_json/document.hpp"
+#include "espbase/stack_json/generate.hpp"
 
 // Builder with stack_array and span_array
 __attribute__((noinline))

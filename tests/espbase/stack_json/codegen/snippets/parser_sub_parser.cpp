@@ -1,5 +1,5 @@
 #include <string_view>
-#include "espbase/stack_json/parser.hpp"
+#include "espbase/stack_json/parse.hpp"
 
 // DynamicNode with recursive sub-parsing
 __attribute__((noinline))

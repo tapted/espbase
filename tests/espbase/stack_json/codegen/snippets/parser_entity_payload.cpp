@@ -1,5 +1,5 @@
 #include <string_view>
-#include "espbase/stack_json/parser.hpp"
+#include "espbase/stack_json/parse.hpp"
 
 // Representative IoT entity parser (e.g. sensor/light payload)
 __attribute__((noinline))

@@ -1,4 +1,4 @@
-#include "espbase/stack_json/document.hpp"
+#include "espbase/stack_json/generate.hpp"
 
 // Builder with conditional nodes (boolean condition and pointer null check)
 __attribute__((noinline))

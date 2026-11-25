@@ -1,4 +1,4 @@
-#include "espbase/stack_json/document.hpp"
+#include "espbase/stack_json/generate.hpp"
 
 // Builder with nested document (sub-object)
 __attribute__((noinline))

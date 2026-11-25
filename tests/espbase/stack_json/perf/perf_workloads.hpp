@@ -10,8 +10,8 @@
 #include <vector>
 
 #include "espbase/stack_json/buffer.hpp"
-#include "espbase/stack_json/document.hpp"
-#include "espbase/stack_json/parser.hpp"
+#include "espbase/stack_json/generate.hpp"
+#include "espbase/stack_json/parse.hpp"
 
 namespace sjson::perf {
 

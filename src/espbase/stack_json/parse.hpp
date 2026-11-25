@@ -407,5 +407,213 @@
  * @note Zero heap allocation throughout — `sensors`, `obj_str`, `id`, and `val`
  *       all live on the call stack.
  */
-#include "espbase/stack_json/parser.hpp"  // bind(), bind_unknown(), json_parser(), DynamicNodeBase, Parser
-#include "espbase/stack_json/path.hpp"  // PathBase + path()
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+
+#include "espbase/stack_json/detail/parse_node_base.hpp"
+#include "espbase/stack_json/detail/parser_impl.hpp"
+#include "espbase/stack_json/path.hpp"
+
+namespace sjson {
+
+/**
+ * @brief Result of a path-only `bind()` call or catch-all callback argument.
+ *
+ * @details Captures a zero-copy `std::string_view` over the raw JSON value
+ * matched at runtime (including full `{...}` objects and `[...]` arrays) and
+ * exposes type identification, value coercion (`>>`, `as<T>()`), array
+ * iteration, and nested sub-parsing (`parse()`).
+ */
+class DynamicNodeBase : public ParseNodeBase {
+ protected:
+  std::string_view raw_val_;
+  bool is_string_ = false;
+  std::string_view iter_state_;
+  bool iter_started_ = false;
+
+ public:
+  explicit constexpr DynamicNodeBase(bool catch_all = false) : ParseNodeBase(catch_all) {}
+
+  /// @brief Internal parser hook called when the bound path matches.
+  void assign(const PathBase&, std::string_view raw_val, bool is_string, bool is_null) override;
+
+  /**
+   * @brief Returns a zero-copy view of the raw unparsed JSON token or block.
+   *
+   * @details For objects and arrays this includes the outer `{...}` or `[...]`
+   * delimiters. For strings, it excludes the outer quotes and preserves escapes.
+   */
+  std::string_view raw() const { return raw_val_; }
+
+  /// @brief Returns `true` if the matched JSON value was a string.
+  bool is_string() const { return is_string_; }
+  /// @brief Returns `true` if the matched JSON value is an array (`[...]`).
+  bool is_array() const { return !raw_val_.empty() && raw_val_.front() == '['; }
+  /// @brief Returns `true` if the matched JSON value is an object (`{...}`).
+  bool is_object() const { return !raw_val_.empty() && raw_val_.front() == '{'; }
+  /// @brief Returns `true` if the matched JSON value is `true` or `false`.
+  bool is_boolean() const { return raw_val_ == "true" || raw_val_ == "false"; }
+  /// @brief Returns `true` if the matched JSON value is a numeric literal.
+  bool is_number() const {
+    return is_set_ && !is_null_ && !is_string_ && !is_array() && !is_object() && !is_boolean();
+  }
+
+  /**
+   * @brief Spins up a child parser over the raw JSON block captured by this node.
+   *
+   * @tparam Nodes Bindings created via `sjson::bind()`.
+   * @param nodes Bindings to extract from the captured sub-object.
+   * @return `true` if the node was set and non-null (and thus parsed), `false` otherwise.
+   */
+  template <typename... Nodes>
+  bool parse(Nodes&&... nodes) const;
+
+  /**
+   * @brief Extracts and coerces the value into @p target, or iterates if this node is an array.
+   *
+   * @details When the captured value is a JSON array, successive calls advance an
+   * internal cursor and yield one element per call until the array is exhausted.
+   *
+   * @tparam TargetT Any supported target type (`bool`, arithmetic, `std::string_view`,
+   *                 `std::span<char>`, `std::string`).
+   * @param target Destination variable (left untouched if `false` is returned).
+   * @return `true` if a value/element was extracted, `false` if unset or array exhausted.
+   */
+  template <typename TargetT>
+  bool operator>>(TargetT& target);
+
+  /**
+   * @brief Shorthand helper that coerces and returns the value as @p T.
+   *
+   * @tparam T Destination type (defaults to `std::string`).
+   * @return Extracted value, or default-constructed `T{}` if unset.
+   */
+  template <typename T = std::string>
+  T as() {
+    T val{};
+    *this >> val;
+    return val;
+  }
+
+ private:
+  std::string_view next_array_token(bool& is_str);
+};
+
+}  // namespace sjson
+
+#include "espbase/stack_json/detail/parse_node_impl.hpp"
+
+namespace sjson {
+
+/**
+ * @brief Binds a compile-time JSON path to a typed target variable.
+ *
+ * @tparam PathT A `StaticPath<Depth>` created by `sjson::path()`.
+ * @tparam TargetT Any supported target type (`bool`, integral, `float`, `double`,
+ *                 `std::string_view`, `std::span<char>`, `std::string`).
+ * @param p Path to match.
+ * @param target Variable populated during `Parser::parse()`.
+ */
+template <typename PathT, typename TargetT>
+auto bind(PathT&& p, TargetT& target) {
+  return BindNode<std::decay_t<PathT>, TargetT>(std::forward<PathT>(p), target);
+}
+
+/**
+ * @brief Root-key shorthand for `bind(path(root_key), target)`.
+ */
+template <typename TargetT>
+auto bind(const char* root_key, TargetT& target) {
+  return bind(path(root_key), target);
+}
+
+/**
+ * @brief Creates a dynamic binding for @p p without a fixed target variable.
+ *
+ * @tparam PathT A `StaticPath<Depth>` created by `sjson::path()`.
+ * @param p Path to match.
+ * @return A `DynamicNode` (subclass of `DynamicNodeBase`) to inspect after parsing.
+ */
+template <typename PathT>
+auto bind(PathT&& p) {
+  return DynamicNode<std::decay_t<PathT>>(std::forward<PathT>(p));
+}
+
+/**
+ * @brief Root-key shorthand for dynamic `bind(path(root_key))`.
+ */
+inline auto bind(const char* root_key) {
+  return bind(path(root_key));
+}
+
+/**
+ * @brief Wraps a callback as a catch-all binding for any unmatched JSON paths.
+ *
+ * @tparam Callback Callable with signature `void(const PathBase&, DynamicNodeBase&)`.
+ * @param cb Callback invoked for each unmatched leaf/array/object path.
+ */
+template <typename Callback>
+auto bind_unknown(Callback&& cb) {
+  return UnknownBindNode<std::decay_t<Callback>>(std::forward<Callback>(cb));
+}
+
+/**
+ * @brief Constructs a zero-allocation SAX parser from a pack of `bind()` nodes.
+ *
+ * @tparam Nodes Binding node types created by `bind()` or `bind_unknown()`.
+ * @param nodes Bindings to populate when `parse(json)` is called.
+ */
+template <typename... Nodes>
+auto json_parser(Nodes&&... nodes) {
+  return Parser<Nodes...>(std::forward<Nodes>(nodes)...);
+}
+
+/**
+ * @brief Overload accepting a catch-all callback as the first argument, followed by explicit bindings.
+ *
+ * @tparam First Callable with signature `void(const PathBase&, DynamicNodeBase&)`.
+ * @tparam Rest Explicit `bind()` nodes.
+ */
+template <typename First, typename... Rest,
+          typename = std::enable_if_t<!std::is_base_of_v<ParseNodeBase, std::decay_t<First>>>>
+auto json_parser(First&& cb, Rest&&... rest) {
+  return Parser<UnknownBindNode<std::decay_t<First>>, std::decay_t<Rest>...>(
+      bind_unknown(std::forward<First>(cb)), std::forward<Rest>(rest)...);
+}
+
+template <typename... Nodes>
+bool DynamicNodeBase::parse(Nodes&&... nodes) const {
+  if (!is_set_ || is_null_) return false;
+  auto p = Parser<std::decay_t<Nodes>...>(std::forward<Nodes>(nodes)...);
+  p.parse(raw_val_);
+  return true;
+}
+
+template <typename TargetT>
+inline bool DynamicNodeBase::operator>>(TargetT& target) {
+  if (!is_set_) return false;
+
+  std::string_view val_to_parse = raw_val_;
+  bool val_is_null = is_null_;
+
+  if (!raw_val_.empty() && raw_val_.front() == '[') {
+    if (!iter_started_) {
+      iter_state_ = raw_val_.substr(1);
+      iter_started_ = true;
+    }
+    bool is_str_token = false;
+    val_to_parse = next_array_token(is_str_token);
+    if (val_to_parse.empty()) return false;
+    val_is_null = (val_to_parse == "null");
+  } else {
+    if (iter_started_) return false;
+    iter_started_ = true;
+  }
+
+  coerce_value(val_to_parse, val_is_null, target);
+  return true;
+}
+
+}  // namespace sjson

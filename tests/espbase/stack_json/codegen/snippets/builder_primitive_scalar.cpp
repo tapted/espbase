@@ -1,4 +1,4 @@
-#include "espbase/stack_json/document.hpp"
+#include "espbase/stack_json/generate.hpp"
 
 // Single primitive scalar builder
 __attribute__((noinline))

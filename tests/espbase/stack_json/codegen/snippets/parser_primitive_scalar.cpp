@@ -1,5 +1,5 @@
 #include <string_view>
-#include "espbase/stack_json/parser.hpp"
+#include "espbase/stack_json/parse.hpp"
 
 // Single primitive scalar bind: isolates baseline parser template overhead
 __attribute__((noinline))

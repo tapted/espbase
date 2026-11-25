@@ -30,7 +30,7 @@ StackJson flips the model:
 StackJson allows you to declaratively build JSON payloads that mirror the final output structure. See [Migrating from ArduinoJson to StackJson](./migrating_from_arduino_json.md) for a side-by-side comparison.
 
 ### The Basics
-Paths can be defined inline or stored as variables for clean grouping.
+Paths can be defined inline or stored as variables for clean grouping. Include `"espbase/stack_json/generate.hpp"` for generation only, `"espbase/stack_json/parse.hpp"` for parsing only, or `"espbase/stack_json/json.hpp"` for both (with convenience `using` declarations).
 
 ```cpp
 #include "espbase/stack_json/json.hpp"
@@ -181,7 +181,7 @@ auto doc = stack_json(
 Need to pass documents across function boundaries or virtual methods? Use `StackBuilder` to escape the template matrix and merge documents safely on the stack.
 
 ```cpp
-void Entity::inject_into(Buffer& buffer, BuilderBase& builder) const {
+void Entity::inject_into(Buffer& buffer, Builder& builder) const {
     auto base_doc = stack_json(node("unique_id", this->id));
     
     builder.add(base_doc);

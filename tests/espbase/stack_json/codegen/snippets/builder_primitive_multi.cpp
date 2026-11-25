@@ -1,5 +1,5 @@
 #include <cstdint>
-#include "espbase/stack_json/document.hpp"
+#include "espbase/stack_json/generate.hpp"
 
 // Multiple primitive scalars builder
 __attribute__((noinline))

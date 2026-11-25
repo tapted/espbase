@@ -418,13 +418,157 @@
  * @endcode
  */
 
+#include <type_traits>
+#include <utility>
+
 #include "espbase/stack_json/array_emitter.hpp"
 #include "espbase/stack_json/buffer.hpp"
 #include "espbase/stack_json/builder.hpp"
-#include "espbase/stack_json/document.hpp"
+#include "espbase/stack_json/detail/document_impl.hpp"
+#include "espbase/stack_json/detail/node_impl.hpp"
+#include "espbase/stack_json/detail/value_impl.hpp"
 #include "espbase/stack_json/dynamic_buffer.hpp"
-#include "espbase/stack_json/node.hpp"
 #include "espbase/stack_json/path.hpp"
 #include "espbase/stack_json/pretty_buffer.hpp"
 #include "espbase/stack_json/printer.hpp"
-#include "espbase/stack_json/value.hpp"
+
+namespace sjson {
+
+/**
+ * @brief Creates a JSON key-value node at the given compile-time path.
+ *
+ * @details Values may be numbers, booleans, `nullptr`, strings (`const char*`,
+ * `std::string_view`, lvalue `std::string`), `Printer` lambdas, `ArrayEmitter`
+ * lambdas, `stack_json()` documents, or `stack_array()`/`span_array()`/`stream_array()`
+ * arrays. Captured by reference via perfect forwarding.
+ *
+ * @tparam PathT A `StaticPath<Depth>` created by `sjson::path()`.
+ * @tparam ValueT Any supported JSON value type.
+ * @param p Key path from root to leaf.
+ * @param val Value to emit at @p p.
+ */
+template <typename PathT, typename ValueT>
+auto node(PathT&& p, ValueT&& val) {
+  using ValType = node_value_t<ValueT>;
+  return ValueNode<std::decay_t<PathT>, ValType>(std::forward<PathT>(p),
+                                                 static_cast<ValType>(std::forward<ValueT>(val)));
+}
+
+/**
+ * @brief Root-key shorthand for `node(path(root_key), val)`.
+ *
+ * @tparam ValueT Any supported JSON value type.
+ * @param root_key Top-level JSON property name.
+ * @param val Value to emit.
+ */
+template <typename ValueT>
+auto node(const char* root_key, ValueT&& val) {
+  return node(path(root_key), std::forward<ValueT>(val));
+}
+
+/**
+ * @brief Creates a conditional JSON node that is omitted entirely if @p condition is `false`.
+ *
+ * @tparam PathT A `StaticPath<Depth>` created by `sjson::path()`.
+ * @tparam ValueT Any supported JSON value type.
+ * @param condition When `false`, the key and value are excluded from the emitted JSON.
+ * @param p Key path from root to leaf.
+ * @param val Value to emit when @p condition is `true`.
+ */
+template <typename PathT, typename ValueT>
+auto node_if(bool condition, PathT&& p, ValueT&& val) {
+  auto n = node(std::forward<PathT>(p), std::forward<ValueT>(val));
+  n.set_omitted(!condition);
+  return n;
+}
+
+/**
+ * @brief Root-key shorthand for `node_if(condition, path(root_key), val)`.
+ */
+template <typename ValueT>
+auto node_if(bool condition, const char* root_key, ValueT&& val) {
+  return node_if(condition, path(root_key), std::forward<ValueT>(val));
+}
+
+/**
+ * @brief Null-pointer shorthand: omits the node if @p val is `nullptr`.
+ *
+ * @tparam PathT A `StaticPath<Depth>` created by `sjson::path()`.
+ * @param p Key path from root to leaf.
+ * @param val C-string pointer; if `nullptr`, the key is omitted.
+ */
+template <typename PathT>
+auto node_if(PathT&& p, const char* val) {
+  // std::move forces ValueT to deduce as 'const char*' instead of 'const char*&'
+  // This guarantees the node copies the pointer itself, rather than referencing the local variable.
+  return node_if(val != nullptr, std::forward<PathT>(p), std::move(val));
+}
+
+/**
+ * @brief Root-key null-pointer shorthand: omits the key if @p val is `nullptr`.
+ */
+inline auto node_if(const char* root_key, const char* val) {
+  return node_if(val != nullptr, path(root_key), std::move(val));
+}
+
+/**
+ * @brief Wraps a contiguous container (e.g. `std::vector`, `std::array`, C-array) as a JSON array.
+ *
+ * @details Captures a zero-copy `std::span` over the lvalue container.
+ * @tparam Container Any contiguous container supporting `std::data()` and `std::size()`.
+ * @param c Lvalue container of elements supported by `sjson::node()`.
+ */
+template <typename Container>
+auto span_array(Container& c) {
+  using ElementT = std::remove_pointer_t<decltype(std::data(c))>;
+  return SpanArrayDocument<ElementT>(std::span<ElementT>(std::data(c), std::size(c)));
+}
+
+/**
+ * @brief Wraps an explicit `std::span` as a JSON array.
+ *
+ * @tparam ElementT Element type supported by `sjson::node()`.
+ * @param s Span view over elements to emit.
+ */
+template <typename ElementT>
+auto span_array(std::span<ElementT> s) {
+  return SpanArrayDocument<ElementT>(s);
+}
+
+/**
+ * @brief Creates a compile-time heterogeneous JSON array.
+ *
+ * @tparam Elements Element types (may be mixed primitives, strings, documents, or nested arrays).
+ * @param elems Elements captured by reference via perfect forwarding.
+ */
+template <typename... Elements>
+auto stack_array(Elements&&... elems) {
+  return ArrayDocument<Elements...>(std::forward<Elements>(elems)...);
+}
+
+/**
+ * @brief Creates a streaming JSON array whose elements are emitted on the fly by @p cb.
+ *
+ * @tparam Callback Callable accepting `sjson::ArrayEmitter&`.
+ * @param cb Callback invoked during emission to stream array elements one at a time.
+ */
+template <typename Callback>
+auto stream_array(Callback&& cb) {
+  return StreamArrayDocument<std::decay_t<Callback>>(std::forward<Callback>(cb));
+}
+
+/**
+ * @brief Assembles a JSON object document from a pack of `node()` / `node_if()` nodes.
+ *
+ * @tparam Nodes Node types (must inherit from `NodeBase`).
+ * @param nodes Nodes to include in the JSON object. Call `doc.emit(buffer)` to serialize.
+ */
+template <typename... Nodes>
+auto stack_json(Nodes&&... nodes) {
+  static_assert((std::is_base_of_v<NodeBase, std::decay_t<Nodes>> && ...),
+                "StackJson Error: All arguments to stack_json() must be Nodes. "
+                "Ensure keys and values are using node() or node_if().");
+  return Document<Nodes...>(std::forward<Nodes>(nodes)...);
+}
+
+}  // namespace sjson

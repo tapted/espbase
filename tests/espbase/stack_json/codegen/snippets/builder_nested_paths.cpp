@@ -1,5 +1,5 @@
 #include <string_view>
-#include "espbase/stack_json/document.hpp"
+#include "espbase/stack_json/generate.hpp"
 
 // Builder with nested static paths (depth 2 and depth 3)
 __attribute__((noinline))

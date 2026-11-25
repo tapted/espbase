@@ -1,6 +1,6 @@
 #include <cstdint>
 #include <string_view>
-#include "espbase/stack_json/parser.hpp"
+#include "espbase/stack_json/parse.hpp"
 
 // Multiple primitive types: int, float, bool, uint32_t
 __attribute__((noinline))

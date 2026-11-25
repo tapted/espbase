@@ -1,6 +1,6 @@
 #include <string>
 #include <string_view>
-#include "espbase/stack_json/document.hpp"
+#include "espbase/stack_json/generate.hpp"
 
 // Builder with string literal, string_view, and std::string
 __attribute__((noinline))
