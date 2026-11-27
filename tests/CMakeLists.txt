@@ -17,16 +17,6 @@ enable_testing()
 
 add_executable(espbase_tests
     espbase/esp_result_test.cpp
-    espbase/stack_json/document_test.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/buffer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/document.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/parser.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/pretty_buffer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/printer.cpp
-    espbase/stack_json/builder_test.cpp
-    espbase/stack_json/parser_test.cpp
-    espbase/stack_json/pretty_buffer_test.cpp
-    espbase/stack_json/dynamic_buffer_test.cpp
 )
 
 target_include_directories(espbase_tests PRIVATE
@@ -40,58 +30,3 @@ target_link_libraries(espbase_tests PRIVATE
 
 include(GoogleTest)
 gtest_discover_tests(espbase_tests)
-
-# --- stack_json Codegen & Assembly Analysis Target ---
-if(NOT Python3_EXECUTABLE AND EXISTS "C:/msys64/clang64/bin/python.exe")
-    set(Python3_EXECUTABLE "C:/msys64/clang64/bin/python.exe" CACHE FILEPATH "Python 3 interpreter")
-endif()
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-
-add_custom_target(stack_json_codegen
-    COMMAND ${Python3_EXECUTABLE}
-            "${CMAKE_CURRENT_SOURCE_DIR}/espbase/stack_json/codegen/run_codegen.py"
-            --compiler "${CMAKE_CXX_COMPILER}"
-            --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    COMMENT "Building stack_json representative corpus into annotated assembly and measuring template bloat..."
-    USES_TERMINAL
-)
-
-add_custom_target(codegen_asm DEPENDS stack_json_codegen)
-
-# --- stack_json In-Memory Performance Benchmark ---
-add_executable(stack_json_perf
-    espbase/stack_json/perf/perf_main.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/buffer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/document.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/parser.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/pretty_buffer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/espbase/stack_json/printer.cpp
-)
-
-target_include_directories(stack_json_perf PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src
-    ${CMAKE_CURRENT_SOURCE_DIR}/../emulated/esp-idf/include
-)
-
-# Benchmarks require high optimization (-O3) regardless of CMAKE_BUILD_TYPE
-# Frame pointers and CodeView debug symbols (PDB on Windows) are preserved for samply and ETW stack unwinding
-if(WIN32)
-    target_compile_options(stack_json_perf PRIVATE -O3 -g -gcodeview -fno-omit-frame-pointer -DNDEBUG)
-    target_link_options(stack_json_perf PRIVATE "-Wl,--pdb=${CMAKE_CURRENT_BINARY_DIR}/stack_json_perf.pdb")
-else()
-    target_compile_options(stack_json_perf PRIVATE -O3 -g -fno-omit-frame-pointer -DNDEBUG)
-endif()
-
-add_custom_target(perf_bench
-    COMMAND ${Python3_EXECUTABLE}
-            "${CMAKE_CURRENT_SOURCE_DIR}/espbase/stack_json/perf/run_perf.py"
-            --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
-            --mb 100
-    DEPENDS stack_json_perf
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    COMMENT "Running stack_json in-memory performance benchmark (100 MB per workload)..."
-    USES_TERMINAL
-)
-
-

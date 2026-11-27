@@ -11,11 +11,6 @@ set(ESPBASE_SRCS
     "src/espbase/nvs_store.cpp"
     "src/espbase/pm_lock.cpp"
     "src/espbase/shutdown_registry.cpp"
-    "src/espbase/stack_json/buffer.cpp"
-    "src/espbase/stack_json/document.cpp"
-    "src/espbase/stack_json/parser.cpp"
-    "src/espbase/stack_json/pretty_buffer.cpp"
-    "src/espbase/stack_json/printer.cpp"
 )
 
 set(ESPBASE_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/espbase_generated")
